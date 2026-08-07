@@ -3,3 +3,11 @@ build/
 *.nacp
 *.elf
 *.map
+
+# host test artifacts
+tests/test_homebrew
+tests/test_config
+tests/testdata-*
+
+# fetch-cores.sh working directories
+cores/

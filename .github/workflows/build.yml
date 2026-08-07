@@ -1,0 +1,106 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: host tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile all sources with warnings as errors
+        run: make -C tests compile
+
+      - name: Run test suite under sanitizers
+        run: make -C tests
+
+  build:
+    name: build NRO
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Driving the official image directly, rather than using `container:`,
+      # keeps checkout and the release steps on the host runner.
+      # The mount point must not be named "build" - devkitPro's Makefile uses
+      # the directory name to tell its outer and inner invocations apart.
+      - name: Build with devkitA64
+        run: |
+          docker run --rm -v "$PWD":/project -w /project \
+            docker.io/devkitpro/devkita64:latest make
+
+      - name: Verify the NRO is well formed
+        run: |
+          python3 - <<'PY'
+          import struct, sys
+          d = open('ludi-nx.nro', 'rb').read()
+          assert d[0x10:0x14] == b'NRO0', 'bad NRO magic'
+          size = struct.unpack('<I', d[0x18:0x1c])[0]
+          assert 0 < size <= len(d), f'implausible image size {size:#x}'
+          assert d[size:size+4] == b'ASET', 'missing asset header'
+          icon_off, icon_sz, nacp_off, nacp_sz = struct.unpack('<QQQQ', d[size+8:size+40])
+          assert icon_sz > 0 and nacp_sz > 0, 'empty icon or nacp section'
+          nacp = d[size+nacp_off : size+nacp_off+0x300]
+          name = nacp[:0x200].split(b'\0')[0].decode()
+          assert name == 'LUDI-NX', f'unexpected title {name!r}'
+          print(f'ok: {len(d)} bytes, image {size:#x}, icon {icon_sz:#x}, title {name}')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ludi-nx
+          path: ludi-nx.nro
+          if-no-files-found: error
+
+  release:
+    name: release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [tests, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ludi-nx
+
+      - name: Package an SD-card-ready archive
+        run: |
+          version="${GITHUB_REF_NAME}"
+          mkdir -p pkg/switch/ludi-nx
+          cp ludi-nx.nro pkg/switch/ludi-nx/
+          cp examples/systems-tico.ini pkg/switch/ludi-nx/systems.ini
+          cp README.md LICENSE pkg/
+          (cd pkg && zip -r "../ludi-nx-${version}.zip" .)
+          sha256sum "ludi-nx-${version}.zip" ludi-nx.nro > checksums.txt
+          cat checksums.txt
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
+          files: |
+            ludi-nx-*.zip
+            ludi-nx.nro
+            checksums.txt
+          body: |
+            Unzip onto the root of your SD card, then start **LUDI-NX** from hbmenu.
+
+            The archive lays out `switch/ludi-nx/` with the NRO and a `systems.ini`
+            covering twenty systems, pointed at a stock tico install's prebuilt cores
+            in `/tico/cores`. Edit that file if your layout differs — press **Y** in
+            the app to reload it.
+
+            No ROMs, BIOS images, firmware, keys, or emulator cores are included.
