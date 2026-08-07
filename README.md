@@ -55,6 +55,34 @@ make
 Either route produces `ludi-nx.nro`. Copy it to `/switch/ludi-nx/ludi-nx.nro` on your SD
 card and start it from hbmenu.
 
+### Tests
+
+The platform-independent logic builds against a stub of the libnx API, so it can be
+exercised on a normal machine with no cross toolchain:
+
+```sh
+make -C tests          # build and run under AddressSanitizer + UBSan
+make -C tests compile  # every source at -O2 -Wall -Wextra -Werror
+```
+
+The `compile` target matters: `-O2` is what surfaces GCC's format-truncation and
+array-bounds diagnostics, which a syntax-only check silently misses.
+
+### Releases
+
+CI runs the tests, builds the NRO in devkitPro's official image, and checks the result is
+a well-formed NRO with the expected embedded title. Pushing a `v*` tag additionally
+publishes a **draft** release with an SD-card-ready archive:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The archive unzips onto the root of an SD card, laying out `switch/ludi-nx/` with the NRO
+and a twenty-system `systems.ini`. Releases are drafts, so nothing goes public until you
+review and publish it.
+
 ## Controls
 
 | Input | Action |
