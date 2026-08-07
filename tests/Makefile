@@ -27,12 +27,18 @@ plain: clean
 	@$(CC) $(CFLAGS) -O2 -o test_config   $(CONFIG_SRC)
 	@./test_homebrew && ./test_config
 
-# Compiles every source at -O2, which surfaces the format-truncation and
-# array-bounds diagnostics that only run with optimisation enabled.
+# Compiles at -O2, which surfaces the format-truncation and array-bounds
+# diagnostics that only run with optimisation enabled.
+#
+# Only the platform-independent sources are listed. render.c, icons.c, ui.c and
+# main.c need real SDL2 headers, so they are covered by the cross build in CI
+# rather than here.
+PORTABLE_SRC = entry.c config.c roms.c homebrew.c titles.c launch.c
+
 compile:
-	@set -e; for f in $(SRC)/*.c; do \
-		$(CC) $(CFLAGS) -O2 -Werror -c $$f -o /dev/null; \
-	done; echo "all sources compile clean at -O2 -Wall -Wextra -Werror"
+	@set -e; for f in $(PORTABLE_SRC); do \
+		$(CC) $(CFLAGS) -O2 -Werror -c $(SRC)/$$f -o /dev/null; \
+	done; echo "portable sources compile clean at -O2 -Wall -Wextra -Werror"
 
 clean:
 	@rm -rf test_homebrew test_config testdata-homebrew testdata-config

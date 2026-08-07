@@ -23,6 +23,10 @@ typedef struct {
     char      path[ENTRY_PATH_LEN];  ///< NRO path (Homebrew) or ROM path (Game).
     u64       application_id;        ///< EntryKind_Title only.
     int       system_index;          ///< Index into SystemList; -1 when not a Game.
+
+    /* Homebrew artwork, located during the scan and decoded lazily. */
+    u64       icon_offset;           ///< Absolute byte offset of the JPEG in the NRO.
+    u32       icon_size;             ///< 0 when the NRO carries no icon.
 } Entry;
 
 typedef struct {

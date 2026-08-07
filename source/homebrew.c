@@ -67,8 +67,18 @@ static bool read_nro_metadata(const char *path, Entry *entry)
     AssetHeader asset;
     if (fseek(file, nro_size, SEEK_SET) != 0 ||
         fread(&asset, sizeof(asset), 1, file) != 1 ||
-        asset.magic != ASET_MAGIC ||
-        asset.nacp.size < sizeof(NacpLanguageEntry)) {
+        asset.magic != ASET_MAGIC) {
+        fclose(file);
+        return false;
+    }
+
+    /* Record where the icon lives; it is decoded only if it becomes visible. */
+    if (asset.icon.size > 0 && asset.icon.size <= 0x100000) {
+        entry->icon_offset = (u64)nro_size + asset.icon.offset;
+        entry->icon_size = (u32)asset.icon.size;
+    }
+
+    if (asset.nacp.size < sizeof(NacpLanguageEntry)) {
         fclose(file);
         return false;
     }

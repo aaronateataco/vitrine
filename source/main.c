@@ -4,7 +4,9 @@
 #include <sys/stat.h>
 
 #include "config.h"
+#include "icons.h"
 #include "launch.h"
+#include "render.h"
 #include "roms.h"
 #include "ui.h"
 
@@ -32,18 +34,17 @@ static size_t build_view(const EntryList *list, Filter filter, size_t *view)
     return count;
 }
 
-static void clamp_scroll(size_t selected, size_t *scroll)
+/* Keeps the selected tile's row on screen. */
+static void clamp_scroll(size_t selected, size_t *scroll_row)
 {
-    if (selected < *scroll)
-        *scroll = selected;
-    else if (selected >= *scroll + UI_LIST_ROWS)
-        *scroll = selected - UI_LIST_ROWS + 1;
+    size_t row = selected / UI_COLS;
+
+    if (row < *scroll_row)
+        *scroll_row = row;
+    else if (row >= *scroll_row + UI_ROWS)
+        *scroll_row = row - UI_ROWS + 1;
 }
 
-/*
- * Reloads the system table too, so editing systems.ini and pressing rescan is
- * enough to pick up a newly built core.
- */
 static void rescan(EntryList *list, SystemList *systems, char *status, size_t status_size)
 {
     list->count = 0;
@@ -70,43 +71,51 @@ static void rescan(EntryList *list, SystemList *systems, char *status, size_t st
         status[0] = '\0';
 }
 
+static void move(size_t *selected, size_t view_count, int delta)
+{
+    if (view_count == 0)
+        return;
+
+    long next = (long)*selected + delta;
+    if (next < 0)
+        next = 0;
+    if (next >= (long)view_count)
+        next = (long)view_count - 1;
+
+    *selected = (size_t)next;
+}
+
 int main(int argc, char **argv)
 {
     (void)argc;
     (void)argv;
 
-    consoleInit(NULL);
-    padConfigureInput(1, HidNpadStyleSet_NpadStandard);
+    Render render;
+    if (!render_init(&render)) {
+        render_exit(&render);
+        return 1;
+    }
 
+    IconCache *icons = icons_create(render.renderer);
+
+    padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     PadState pad;
     padInitializeDefault(&pad);
 
     EntryList list;
-    if (!entry_list_init(&list)) {
-        printf("out of memory\n");
-        consoleUpdate(NULL);
-        while (appletMainLoop()) {
-            padUpdate(&pad);
-            if (padGetButtonsDown(&pad) & HidNpadButton_Plus)
-                break;
-        }
-        consoleExit(NULL);
-        return 1;
-    }
-
     SystemList systems;
-    if (!systems_init(&systems)) {
-        entry_list_free(&list);
-        consoleExit(NULL);
+    if (!entry_list_init(&list) || !systems_init(&systems)) {
+        icons_destroy(icons);
+        render_exit(&render);
         return 1;
     }
 
-    char status[256] = {0};
+    char status[256] = { 0 };
     rescan(&list, &systems, status, sizeof(status));
 
     if (!launch_can_launch_title() && status[0] == '\0')
         snprintf(status, sizeof(status),
-                 "games cannot be launched from this applet type - homebrew only");
+                 "installed games cannot be launched from this applet type");
 
     size_t *view = malloc((list.count ? list.count : 1) * sizeof(*view));
     size_t view_capacity = list.count;
@@ -114,43 +123,32 @@ int main(int argc, char **argv)
 
     Filter filter = Filter_All;
     size_t selected = 0;
-    size_t scroll = 0;
-    bool redraw = true;
+    size_t scroll_row = 0;
 
     while (appletMainLoop()) {
+        SDL_Event event;
+        while (SDL_PollEvent(&event))
+            if (event.type == SDL_QUIT)
+                goto done;
+
         padUpdate(&pad);
         u64 down = padGetButtonsDown(&pad);
 
         if (down & HidNpadButton_Plus)
             break;
 
-        if (view_count > 0) {
-            if (down & HidNpadButton_AnyDown) {
-                selected = (selected + 1) % view_count;
-                redraw = true;
-            }
-            if (down & HidNpadButton_AnyUp) {
-                selected = (selected + view_count - 1) % view_count;
-                redraw = true;
-            }
-            if (down & HidNpadButton_AnyRight) {
-                selected = (selected + UI_LIST_ROWS < view_count)
-                               ? selected + UI_LIST_ROWS
-                               : view_count - 1;
-                redraw = true;
-            }
-            if (down & HidNpadButton_AnyLeft) {
-                selected = (selected > UI_LIST_ROWS) ? selected - UI_LIST_ROWS : 0;
-                redraw = true;
-            }
-        }
+        if (down & HidNpadButton_AnyLeft)  move(&selected, view_count, -1);
+        if (down & HidNpadButton_AnyRight) move(&selected, view_count, +1);
+        if (down & HidNpadButton_AnyUp)    move(&selected, view_count, -UI_COLS);
+        if (down & HidNpadButton_AnyDown)  move(&selected, view_count, +UI_COLS);
+        if (down & HidNpadButton_L)        move(&selected, view_count, -UI_PAGE);
+        if (down & HidNpadButton_R)        move(&selected, view_count, +UI_PAGE);
 
         if (down & HidNpadButton_X) {
             filter = (filter + 1) % Filter_Count;
             view_count = view ? build_view(&list, filter, view) : 0;
             selected = 0;
-            scroll = 0;
-            redraw = true;
+            scroll_row = 0;
         }
 
         if (down & HidNpadButton_Y) {
@@ -167,43 +165,33 @@ int main(int argc, char **argv)
             view_count = view ? build_view(&list, filter, view) : 0;
             if (selected >= view_count)
                 selected = view_count ? view_count - 1 : 0;
-            scroll = 0;
-            redraw = true;
+            scroll_row = 0;
         }
 
         if ((down & HidNpadButton_A) && view_count > 0) {
             const Entry *entry = &list.items[view[selected]];
             Result rc = launch_entry(entry, &systems);
 
-            if (R_SUCCEEDED(rc)) {
-                /*
-                 * Both paths hand control away: hbloader chainloads the next NRO
-                 * once we return, and the system takes over for a title launch.
-                 */
-                break;
-            }
+            if (R_SUCCEEDED(rc))
+                break;   /* hbloader chainloads, or the system takes over. */
 
             if (entry->kind == EntryKind_Title && !launch_can_launch_title())
                 snprintf(status, sizeof(status),
-                         "games cannot be launched from this applet type");
+                         "installed games cannot be launched from this applet type");
             else
                 snprintf(status, sizeof(status), "launch failed (0x%x)", rc);
-
-            redraw = true;
         }
 
-        if (redraw) {
-            clamp_scroll(selected, &scroll);
-            ui_draw(&list, view, view_count, selected, scroll, filter, status);
-            redraw = false;
-        }
-
-        consoleUpdate(NULL);
+        clamp_scroll(selected, &scroll_row);
+        ui_draw(&render, icons, &list, view, view_count, selected, scroll_row,
+                filter, status);
     }
 
+done:
     free(view);
     systems_free(&systems);
     entry_list_free(&list);
-    consoleExit(NULL);
+    icons_destroy(icons);
+    render_exit(&render);
     return 0;
 }

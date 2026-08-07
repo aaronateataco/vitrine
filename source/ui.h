@@ -1,6 +1,8 @@
 #pragma once
 
 #include "entry.h"
+#include "icons.h"
+#include "render.h"
 
 typedef enum {
     Filter_All      = 0,
@@ -11,10 +13,14 @@ typedef enum {
 } Filter;
 
 enum {
-    UI_LIST_ROWS = 34,
+    UI_COLS = 6,
+    UI_ROWS = 3,
+    UI_PAGE = UI_COLS * UI_ROWS,
 };
 
 const char *ui_filter_name(Filter filter);
 
-void ui_draw(const EntryList *list, const size_t *view, size_t view_count,
-             size_t selected, size_t scroll, Filter filter, const char *status);
+/// `scroll_row` is the topmost visible grid row, not an entry index.
+void ui_draw(Render *render, IconCache *icons, const EntryList *list,
+             const size_t *view, size_t view_count, size_t selected,
+             size_t scroll_row, Filter filter, const char *status);

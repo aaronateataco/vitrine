@@ -23,13 +23,20 @@ APP_VERSION := 0.1.0
 #---------------------------------------------------------------------------------
 ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 
+# SDL2 pulls in a long transitive chain (freetype, libjpeg, libpng, mesa, EGL),
+# and the correct link order changes between portlib releases. Let pkg-config
+# resolve it rather than pinning a hand-written list that silently rots.
+PKGCONF    := $(DEVKITPRO)/portlibs/switch/bin/aarch64-none-elf-pkg-config
+SDL_CFLAGS := $(shell $(PKGCONF) --cflags sdl2 SDL2_image SDL2_ttf)
+SDL_LIBS   := $(shell $(PKGCONF) --libs sdl2 SDL2_image SDL2_ttf)
+
 CFLAGS   := -g -Wall -Wextra -O2 -ffunction-sections $(ARCH) $(DEFINES)
-CFLAGS   += $(INCLUDE) -D__SWITCH__
+CFLAGS   += $(INCLUDE) -D__SWITCH__ $(SDL_CFLAGS)
 CXXFLAGS := $(CFLAGS) -fno-rtti -fno-exceptions -std=gnu++17
 ASFLAGS  := -g $(ARCH)
 LDFLAGS   = -specs=$(DEVKITPRO)/libnx/switch.specs -g $(ARCH) -Wl,-Map,$(notdir $*.map)
 
-LIBS    := -lnx
+LIBS    := $(SDL_LIBS) -lnx
 LIBDIRS := $(PORTLIBS) $(LIBNX)
 
 #---------------------------------------------------------------------------------
