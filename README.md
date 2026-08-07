@@ -20,7 +20,22 @@ under AddressSanitizer; the `ns` and `applet` paths need real hardware.
 
 ## Building
 
-Requires [devkitPro](https://devkitpro.org/wiki/Getting_Started) with the `switch-dev` group:
+### With a container (recommended on Fedora and any non-Debian distro)
+
+devkitPro publishes an official Switch image, so no toolchain lands on your system:
+
+```sh
+sudo dnf install -y podman        # or: apt install podman / docker
+podman run --rm -v "$PWD":/build:Z -w /build docker.io/devkitpro/devkita64 make
+```
+
+The `:Z` suffix relabels the bind mount for SELinux. Without it the container gets
+permission denied on Fedora — this is the usual first stumble.
+
+### With a native toolchain
+
+devkitPro's current installer release ships only a macOS package, so a native install on
+Fedora means building their pacman fork yourself. Where devkitPro packaging exists:
 
 ```sh
 sudo dkp-pacman -S switch-dev
@@ -28,8 +43,8 @@ export DEVKITPRO=/opt/devkitpro
 make
 ```
 
-Produces `ludi-nx.nro`. Copy it to `/switch/ludi-nx/ludi-nx.nro` on your SD card and
-start it from hbmenu.
+Either route produces `ludi-nx.nro`. Copy it to `/switch/ludi-nx/ludi-nx.nro` on your SD
+card and start it from hbmenu.
 
 ## Controls
 
