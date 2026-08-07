@@ -26,11 +26,18 @@ devkitPro publishes an official Switch image, so no toolchain lands on your syst
 
 ```sh
 sudo dnf install -y podman        # or: apt install podman / docker
-podman run --rm -v "$PWD":/build:Z -w /build docker.io/devkitpro/devkita64 make
+podman run --rm -v "$PWD":/project:Z -w /project docker.io/devkitpro/devkita64 make
 ```
 
-The `:Z` suffix relabels the bind mount for SELinux. Without it the container gets
-permission denied on Fedora — this is the usual first stumble.
+Two things about that command are load-bearing:
+
+- **`:Z`** relabels the bind mount for SELinux. Without it the container gets permission
+  denied on Fedora.
+- **The mount point must not be `/build`.** devkitPro's Makefile distinguishes its outer
+  and inner invocations with `ifneq ($(BUILD),$(notdir $(CURDIR)))`, and `BUILD` is
+  `build`. Working in a directory named `build` makes that test match, so make takes the
+  inner branch immediately, `OUTPUT` is never set, and the build fails with
+  `No rule to make target '.nacp', needed by '.nro'`.
 
 ### With a native toolchain
 
