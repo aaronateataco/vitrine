@@ -13,10 +13,12 @@ Early. Scanning, filtering and all three launch paths are implemented; the UI is
 text-based while the core settles. An icon grid is the next step — the metadata layer
 already locates the artwork, it just isn't decoded yet.
 
-**Not yet built or run.** It was written without a devkitPro toolchain available, so
-treat the first `make` as part of the work. The pure-logic layers (NRO asset parsing,
-INI parsing, extension matching, ROM scanning) are covered by host-side tests that pass
-under AddressSanitizer; the `ns` and `applet` paths need real hardware.
+**Builds clean; not yet run on hardware.** `make` produces a valid `ludi-nx.nro` with no
+warnings. The pure-logic layers (NRO asset parsing, INI parsing, extension matching, ROM
+scanning) are covered by host-side tests passing under AddressSanitizer, and the NRO
+parser has been verified against a real devkitPro-produced NRO. The `ns` and `applet`
+paths — enumerating and launching installed titles — have never executed, and need a
+console to exercise.
 
 ## Building
 
