@@ -31,3 +31,9 @@ void render_text_fit(Render *render, TTF_Font *font, int x, int y, int width,
 
 void render_fill(Render *render, SDL_Rect rect, SDL_Color color);
 void render_outline(Render *render, SDL_Rect rect, int thickness, SDL_Color color);
+
+/// Soft drop shadow: concentric rings of decreasing alpha around `rect`.
+void render_shadow(Render *render, SDL_Rect rect, int spread);
+
+/// Horizontal fade used to hint that a shelf continues past the screen edge.
+void render_edge_fade(Render *render, SDL_Rect rect, SDL_Color color, bool from_left);

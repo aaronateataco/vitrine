@@ -1,158 +1,254 @@
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
 #include "ui.h"
 
-/* Grid metrics, sized so three rows and a footer fit 720p without crowding. */
-#define GRID_X0   135
-#define GRID_Y0    84
-#define ICON       150
-#define GAP_X       22
-#define GAP_Y       18
-#define LABEL_H     24
-#define CELL_H     (ICON + LABEL_H)
-#define FOOTER_Y   650
+/*
+ * Layout. Three shelves fit the viewport with the fourth partly visible, which
+ * is what tells the eye the page continues without needing a scrollbar.
+ */
+#define MARGIN_X     64
+#define HEADER_H     76
+#define FOOTER_H    108
+#define TILE        132
+#define TILE_GAP     18
+#define SHELF_LABEL  30
+#define SHELF_PAD    26
+#define SHELF_H     (SHELF_LABEL + TILE + SHELF_PAD)
+#define VIEW_TOP     HEADER_H
+#define VIEW_BOTTOM (SCREEN_H - FOOTER_H)
+#define SELECT_SCALE 1.10f
 
-static const SDL_Color COL_BG      = {  20,  22,  28, 255 };
-static const SDL_Color COL_TILE    = {  35,  39,  51, 255 };
-static const SDL_Color COL_TEXT    = { 232, 234, 240, 255 };
-static const SDL_Color COL_DIM     = { 139, 145, 163, 255 };
-static const SDL_Color COL_ACCENT  = {  74, 163, 255, 255 };
-static const SDL_Color COL_SHADE   = {  10,  11,  15, 255 };
+static const SDL_Color COL_BG       = {  14,  16,  20, 255 };
+static const SDL_Color COL_PANEL    = {  26,  30,  38, 255 };
+static const SDL_Color COL_TEXT     = { 240, 242, 246, 255 };
+static const SDL_Color COL_DIM      = { 138, 144, 160, 255 };
+static const SDL_Color COL_FAINT    = {  74,  80,  96, 255 };
+static const SDL_Color COL_ACCENT   = {  90, 169, 255, 255 };
+static const SDL_Color COL_WARN     = { 236, 130, 130, 255 };
 
-const char *ui_filter_name(Filter filter)
+void ui_state_init(UiState *state)
 {
-    switch (filter) {
-        case Filter_Homebrew: return "homebrew";
-        case Filter_Games:    return "roms";
-        case Filter_Titles:   return "switch";
-        default:              return "all";
-    }
+    state->scroll_y = 0.0f;
+    state->pulse = 1.0f;
 }
 
-static void count_kinds(const EntryList *list, size_t *homebrew, size_t *games,
-                        size_t *titles)
+void ui_state_bump(UiState *state)
 {
-    *homebrew = *games = *titles = 0;
-
-    for (size_t i = 0; i < list->count; i++) {
-        switch (list->items[i].kind) {
-            case EntryKind_Homebrew: (*homebrew)++; break;
-            case EntryKind_Game:     (*games)++;    break;
-            default:                 (*titles)++;   break;
-        }
-    }
+    state->pulse = 0.0f;
 }
 
-/* ROMs have no artwork, so derive a stable tile colour from the system name. */
-static SDL_Color placeholder_color(const char *seed)
+/* Exponential ease. Frame-rate dependent, but vsync pins us at 60Hz. */
+static float approach(float current, float target, float rate)
+{
+    float delta = target - current;
+    if (fabsf(delta) < 0.5f)
+        return target;
+    return current + delta * rate;
+}
+
+static SDL_Color mix(SDL_Color a, SDL_Color b, float t)
+{
+    SDL_Color out;
+    out.r = (Uint8)(a.r + (b.r - a.r) * t);
+    out.g = (Uint8)(a.g + (b.g - a.g) * t);
+    out.b = (Uint8)(a.b + (b.b - a.b) * t);
+    out.a = (Uint8)(a.a + (b.a - a.a) * t);
+    return out;
+}
+
+/* Stable per-platform tint, so ROM plates are recognisable at a glance. */
+static SDL_Color plate_color(const char *seed)
 {
     unsigned hash = 2166136261u;
     for (const char *p = seed; *p; p++)
         hash = (hash ^ (unsigned char)*p) * 16777619u;
 
     SDL_Color color;
-    color.r = (Uint8)(60 + (hash        & 0x3f));
-    color.g = (Uint8)(60 + ((hash >> 8)  & 0x3f));
-    color.b = (Uint8)(80 + ((hash >> 16) & 0x5f));
+    color.r = (Uint8)(46 + (hash         & 0x3f));
+    color.g = (Uint8)(52 + ((hash >> 9)  & 0x3f));
+    color.b = (Uint8)(72 + ((hash >> 18) & 0x4f));
     color.a = 255;
     return color;
 }
 
 static void draw_tile(Render *render, IconCache *icons, const Entry *entry,
-                      size_t index, SDL_Rect cell, bool selected)
+                      size_t entry_index, int x, int y, bool selected, float pulse)
 {
-    SDL_Rect icon_rect = { cell.x, cell.y, ICON, ICON };
+    int size = TILE;
+    int ox = x;
+    int oy = y;
 
     if (selected) {
-        SDL_Rect glow = { cell.x - 8, cell.y - 8, ICON + 16, ICON + 16 };
-        render_fill(render, glow, COL_ACCENT);
+        /* Grow from the centre so neighbours are not pushed visually. */
+        float scale = 1.0f + (SELECT_SCALE - 1.0f) * pulse;
+        size = (int)(TILE * scale);
+        ox = x - (size - TILE) / 2;
+        oy = y - (size - TILE) / 2;
     }
 
-    SDL_Texture *texture = icons_get(icons, entry, index);
+    SDL_Rect rect = { ox, oy, size, size };
+
+    if (selected)
+        render_shadow(render, rect, 10);
+
+    SDL_Texture *texture = icons_get(icons, entry, entry_index);
 
     if (texture) {
-        SDL_RenderCopy(render->renderer, texture, NULL, &icon_rect);
+        SDL_RenderCopy(render->renderer, texture, NULL, &rect);
     } else {
-        /* No artwork: a coloured plate carrying the system or kind name. */
-        const char *label = entry->author[0] ? entry->author : "homebrew";
-        render_fill(render, icon_rect, placeholder_color(label));
-        render_text_fit(render, render->font, icon_rect.x,
-                        icon_rect.y + ICON / 2 - 12, ICON, COL_TEXT, label);
+        const char *label = entry->author[0] ? entry->author : entry->name;
+        render_fill(render, rect, plate_color(label));
+        render_text_fit(render, render->font, rect.x, rect.y + size / 2 - 14,
+                        size, COL_TEXT, label);
     }
 
-    if (!selected) {
-        /* Push unselected tiles back so the cursor reads clearly. */
-        SDL_Color shade = COL_SHADE;
-        shade.a = 90;
-        render_fill(render, icon_rect, shade);
+    if (selected) {
+        render_outline(render, rect, 3, COL_ACCENT);
+    } else {
+        /* Recede unselected tiles rather than dimming the whole shelf. */
+        SDL_Color veil = { 14, 16, 20, 110 };
+        render_fill(render, rect, veil);
+    }
+}
+
+static void draw_shelf(Render *render, IconCache *icons, const EntryList *list,
+                       Shelf *shelf, int y, bool active, float pulse)
+{
+    char meta[64];
+
+    SDL_Color label_color = active ? COL_TEXT : COL_DIM;
+    render_text(render, render->font, MARGIN_X, y, label_color, shelf->name);
+
+    snprintf(meta, sizeof(meta), "%zu", shelf->count);
+    render_text(render, render->font, MARGIN_X + 460, y + 3, COL_FAINT, meta);
+
+    if (active) {
+        SDL_Rect bar = { MARGIN_X - 14, y + 2, 4, 20 };
+        render_fill(render, bar, COL_ACCENT);
     }
 
-    render_text_fit(render, render->font, cell.x, cell.y + ICON + 2, ICON,
-                    selected ? COL_TEXT : COL_DIM, entry->name);
+    int strip_y = y + SHELF_LABEL;
+    int visible_w = SCREEN_W - 2 * MARGIN_X;
+
+    /* Keep the cursor centred, but never scroll past either end. */
+    float total_w = (float)shelf->count * (TILE + TILE_GAP) - TILE_GAP;
+    float target = (float)shelf->cursor * (TILE + TILE_GAP) + TILE / 2.0f
+                 - visible_w / 2.0f;
+    float max_scroll = total_w > visible_w ? total_w - visible_w : 0.0f;
+
+    if (target < 0.0f)        target = 0.0f;
+    if (target > max_scroll)  target = max_scroll;
+
+    shelf->scroll_x = approach(shelf->scroll_x, target, 0.22f);
+
+    SDL_Rect clip = { MARGIN_X - 12, strip_y - 12, visible_w + 24, TILE + 24 };
+    SDL_RenderSetClipRect(render->renderer, &clip);
+
+    for (size_t i = 0; i < shelf->count; i++) {
+        int x = MARGIN_X + (int)(i * (TILE + TILE_GAP) - shelf->scroll_x);
+        if (x + TILE < MARGIN_X - 24 || x > SCREEN_W)
+            continue;   /* Off-screen: skip the icon decode entirely. */
+
+        const Entry *entry = &list->items[shelf->items[i]];
+        draw_tile(render, icons, entry, shelf->items[i], x, strip_y,
+                  active && i == shelf->cursor, pulse);
+    }
+
+    SDL_RenderSetClipRect(render->renderer, NULL);
+
+    /* Fade the strip into the margins so clipped tiles do not end abruptly. */
+    SDL_Color edge = COL_BG;
+    edge.a = 255;
+    render_edge_fade(render, (SDL_Rect){ 0, strip_y - 12, MARGIN_X - 12, TILE + 24 },
+                     edge, false);
+    render_edge_fade(render, (SDL_Rect){ SCREEN_W - MARGIN_X + 12, strip_y - 12,
+                                         MARGIN_X - 12, TILE + 24 }, edge, true);
+}
+
+static void draw_header(Render *render, const EntryList *list, const ShelfList *shelves)
+{
+    char line[128];
+
+    render_text(render, render->font_large, MARGIN_X, 22, COL_TEXT, "LUDI-NX");
+
+    snprintf(line, sizeof(line), "%zu items across %zu shelves",
+             list->count, shelves->count);
+
+    render_text(render, render->font, MARGIN_X + 190, 30, COL_FAINT, line);
+    render_fill(render, (SDL_Rect){ 0, HEADER_H - 2, SCREEN_W, 1 }, COL_PANEL);
+}
+
+static void draw_footer(Render *render, const EntryList *list,
+                        const ShelfList *shelves, size_t shelf_index,
+                        const char *status)
+{
+    char line[256];
+    int y = VIEW_BOTTOM + 16;
+
+    render_fill(render, (SDL_Rect){ 0, VIEW_BOTTOM, SCREEN_W, FOOTER_H }, COL_PANEL);
+
+    if (shelves->count == 0) {
+        render_text(render, render->font_large, MARGIN_X, y, COL_DIM,
+                    "Nothing found");
+        render_text(render, render->font, MARGIN_X, y + 40, COL_FAINT,
+                    "Check systems.ini, then press Y to rescan");
+        return;
+    }
+
+    const Shelf *shelf = &shelves->items[shelf_index];
+    const Entry *entry = &list->items[shelf->items[shelf->cursor]];
+
+    render_text(render, render->font_large, MARGIN_X, y, COL_TEXT, entry->name);
+
+    const char *kind = entry->kind == EntryKind_Homebrew ? "Homebrew"
+                     : entry->kind == EntryKind_Game     ? "ROM"
+                                                         : "Installed";
+    if (entry->author[0])
+        snprintf(line, sizeof(line), "%s   %s   %zu of %zu",
+                 entry->author, kind, shelf->cursor + 1, shelf->count);
+    else
+        snprintf(line, sizeof(line), "%s   %zu of %zu",
+                 kind, shelf->cursor + 1, shelf->count);
+
+    render_text(render, render->font, MARGIN_X, y + 42, COL_DIM, line);
+
+    render_text(render, render->font, SCREEN_W - 430, y + 42, COL_FAINT,
+                "A  play      Y  rescan      +  exit");
+
+    if (status && status[0])
+        render_text(render, render->font, MARGIN_X, y + 70, COL_WARN, status);
 }
 
 void ui_draw(Render *render, IconCache *icons, const EntryList *list,
-             const size_t *view, size_t view_count, size_t selected,
-             size_t scroll_row, Filter filter, const char *status)
+             ShelfList *shelves, size_t shelf_index, UiState *state,
+             const char *status)
 {
-    char line[256];
-
     render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, COL_BG);
 
-    /* Header */
-    render_text(render, render->font_large, GRID_X0, 24, COL_TEXT, "LUDI-NX");
+    state->pulse = approach(state->pulse * 1000.0f, 1000.0f, 0.25f) / 1000.0f;
 
-    size_t homebrew = 0, games = 0, titles = 0;
-    count_kinds(list, &homebrew, &games, &titles);
-    snprintf(line, sizeof(line), "%zu homebrew   %zu roms   %zu switch   [%s]",
-             homebrew, games, titles, ui_filter_name(filter));
-    render_text(render, render->font, GRID_X0 + 170, 34, COL_DIM, line);
+    /* Park the active shelf one slot down, so there is context above it. */
+    float target_y = (float)shelf_index * SHELF_H;
+    if (shelf_index > 0)
+        target_y -= SHELF_H * 0.35f;
+    state->scroll_y = approach(state->scroll_y, target_y, 0.22f);
 
-    /* Grid */
-    for (size_t row = 0; row < UI_ROWS; row++) {
-        for (size_t col = 0; col < UI_COLS; col++) {
-            size_t slot = (scroll_row + row) * UI_COLS + col;
-            if (slot >= view_count)
-                continue;
+    for (size_t i = 0; i < shelves->count; i++) {
+        int y = VIEW_TOP + (int)(i * SHELF_H - state->scroll_y);
 
-            SDL_Rect cell = {
-                GRID_X0 + (int)col * (ICON + GAP_X),
-                GRID_Y0 + (int)row * (CELL_H + GAP_Y),
-                ICON, CELL_H
-            };
+        if (y + SHELF_H < VIEW_TOP - 40 || y > VIEW_BOTTOM + 40)
+            continue;
 
-            const Entry *entry = &list->items[view[slot]];
-            draw_tile(render, icons, entry, view[slot], cell, slot == selected);
-        }
+        draw_shelf(render, icons, list, &shelves->items[i], y,
+                   i == shelf_index, state->pulse);
     }
 
-    /* Footer: full detail for the current selection. */
-    render_fill(render, (SDL_Rect){ 0, FOOTER_Y - 12, SCREEN_W, 2 },
-                (SDL_Color){ 45, 49, 62, 255 });
-
-    if (view_count > 0 && selected < view_count) {
-        const Entry *entry = &list->items[view[selected]];
-        render_text(render, render->font_large, GRID_X0, FOOTER_Y, COL_TEXT, entry->name);
-
-        const char *kind = entry->kind == EntryKind_Homebrew ? "homebrew"
-                         : entry->kind == EntryKind_Game     ? "rom"
-                                                             : "switch game";
-        snprintf(line, sizeof(line), "%s%s%s   -   %zu/%zu",
-                 entry->author, entry->author[0] ? "   -   " : "", kind,
-                 selected + 1, view_count);
-        render_text(render, render->font, GRID_X0, FOOTER_Y + 38, COL_DIM, line);
-    } else {
-        render_text(render, render->font_large, GRID_X0, FOOTER_Y, COL_DIM,
-                    "nothing to show");
-    }
-
-    render_text(render, render->font, SCREEN_W - 430, FOOTER_Y + 38, COL_DIM,
-                "A launch    X filter    Y rescan    + exit");
-
-    if (status && status[0])
-        render_text(render, render->font, GRID_X0, FOOTER_Y + 62,
-                    (SDL_Color){ 235, 130, 130, 255 }, status);
+    /* Drawn last so shelves scroll under the chrome rather than through it. */
+    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, HEADER_H }, COL_BG);
+    draw_header(render, list, shelves);
+    draw_footer(render, list, shelves, shelf_index, status);
 
     SDL_RenderPresent(render->renderer);
 }

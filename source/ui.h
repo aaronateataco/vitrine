@@ -3,24 +3,19 @@
 #include "entry.h"
 #include "icons.h"
 #include "render.h"
+#include "shelves.h"
 
-typedef enum {
-    Filter_All      = 0,
-    Filter_Homebrew = 1,
-    Filter_Games    = 2,
-    Filter_Titles   = 3,
-    Filter_Count    = 4,
-} Filter;
+/// Animation state. Targets are recomputed each frame and eased toward.
+typedef struct {
+    float scroll_y;   ///< Vertical offset of the shelf stack, in pixels.
+    float pulse;      ///< 0..1, restarts on selection change.
+} UiState;
 
-enum {
-    UI_COLS = 6,
-    UI_ROWS = 3,
-    UI_PAGE = UI_COLS * UI_ROWS,
-};
+void ui_state_init(UiState *state);
 
-const char *ui_filter_name(Filter filter);
+/// Call whenever the selection moves, so the cursor animation restarts.
+void ui_state_bump(UiState *state);
 
-/// `scroll_row` is the topmost visible grid row, not an entry index.
 void ui_draw(Render *render, IconCache *icons, const EntryList *list,
-             const size_t *view, size_t view_count, size_t selected,
-             size_t scroll_row, Filter filter, const char *status);
+             ShelfList *shelves, size_t shelf_index, UiState *state,
+             const char *status);

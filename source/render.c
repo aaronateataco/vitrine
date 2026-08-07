@@ -230,3 +230,30 @@ void render_outline(Render *render, SDL_Rect rect, int thickness, SDL_Color colo
         SDL_RenderDrawRect(render->renderer, &r);
     }
 }
+
+void render_shadow(Render *render, SDL_Rect rect, int spread)
+{
+    for (int i = spread; i > 0; i--) {
+        /* Quadratic falloff reads as a soft shadow rather than a hard band. */
+        float t = (float)i / (float)spread;
+        Uint8 alpha = (Uint8)(70.0f * (1.0f - t) * (1.0f - t));
+
+        SDL_SetRenderDrawColor(render->renderer, 0, 0, 0, alpha);
+        SDL_Rect r = { rect.x - i, rect.y - i + 2, rect.w + 2 * i, rect.h + 2 * i };
+        SDL_RenderDrawRect(render->renderer, &r);
+    }
+}
+
+void render_edge_fade(Render *render, SDL_Rect rect, SDL_Color color, bool from_left)
+{
+    for (int x = 0; x < rect.w; x++) {
+        float t = (float)x / (float)rect.w;
+        if (!from_left)
+            t = 1.0f - t;
+
+        SDL_SetRenderDrawColor(render->renderer, color.r, color.g, color.b,
+                               (Uint8)(color.a * (1.0f - t)));
+        SDL_RenderDrawLine(render->renderer, rect.x + x, rect.y,
+                           rect.x + x, rect.y + rect.h);
+    }
+}

@@ -8,44 +8,16 @@
 #include "launch.h"
 #include "render.h"
 #include "roms.h"
+#include "shelves.h"
 #include "ui.h"
 
 #define HOMEBREW_ROOT "sdmc:/switch"
 #define CONFIG_DIR    "sdmc:/switch/ludi-nx"
 #define CONFIG_PATH   CONFIG_DIR "/systems.ini"
+#define PAGE_JUMP      6
 
-static size_t build_view(const EntryList *list, Filter filter, size_t *view)
-{
-    size_t count = 0;
-
-    for (size_t i = 0; i < list->count; i++) {
-        EntryKind kind = list->items[i].kind;
-
-        if (filter == Filter_Homebrew && kind != EntryKind_Homebrew)
-            continue;
-        if (filter == Filter_Games && kind != EntryKind_Game)
-            continue;
-        if (filter == Filter_Titles && kind != EntryKind_Title)
-            continue;
-
-        view[count++] = i;
-    }
-
-    return count;
-}
-
-/* Keeps the selected tile's row on screen. */
-static void clamp_scroll(size_t selected, size_t *scroll_row)
-{
-    size_t row = selected / UI_COLS;
-
-    if (row < *scroll_row)
-        *scroll_row = row;
-    else if (row >= *scroll_row + UI_ROWS)
-        *scroll_row = row - UI_ROWS + 1;
-}
-
-static void rescan(EntryList *list, SystemList *systems, char *status, size_t status_size)
+static void rescan(EntryList *list, SystemList *systems, ShelfList *shelves,
+                   char *status, size_t status_size)
 {
     list->count = 0;
     systems->count = 0;
@@ -60,6 +32,7 @@ static void rescan(EntryList *list, SystemList *systems, char *status, size_t st
     Result ns = titles_scan(list);
     roms_scan(list, systems);
     entry_list_sort(list);
+    shelves_build(shelves, list, systems);
 
     if (R_FAILED(hb) && R_FAILED(ns))
         snprintf(status, status_size, "could not read %s or the title list", HOMEBREW_ROOT);
@@ -71,18 +44,16 @@ static void rescan(EntryList *list, SystemList *systems, char *status, size_t st
         status[0] = '\0';
 }
 
-static void move(size_t *selected, size_t view_count, int delta)
+static void move_cursor(Shelf *shelf, long delta)
 {
-    if (view_count == 0)
-        return;
+    long next = (long)shelf->cursor + delta;
 
-    long next = (long)*selected + delta;
     if (next < 0)
         next = 0;
-    if (next >= (long)view_count)
-        next = (long)view_count - 1;
+    if (next >= (long)shelf->count)
+        next = (long)shelf->count - 1;
 
-    *selected = (size_t)next;
+    shelf->cursor = (size_t)next;
 }
 
 int main(int argc, char **argv)
@@ -104,26 +75,23 @@ int main(int argc, char **argv)
 
     EntryList list;
     SystemList systems;
-    if (!entry_list_init(&list) || !systems_init(&systems)) {
+    ShelfList shelves;
+    if (!entry_list_init(&list) || !systems_init(&systems) || !shelves_init(&shelves)) {
         icons_destroy(icons);
         render_exit(&render);
         return 1;
     }
 
     char status[256] = { 0 };
-    rescan(&list, &systems, status, sizeof(status));
+    rescan(&list, &systems, &shelves, status, sizeof(status));
 
     if (!launch_can_launch_title() && status[0] == '\0')
         snprintf(status, sizeof(status),
                  "installed games cannot be launched from this applet type");
 
-    size_t *view = malloc((list.count ? list.count : 1) * sizeof(*view));
-    size_t view_capacity = list.count;
-    size_t view_count = view ? build_view(&list, Filter_All, view) : 0;
-
-    Filter filter = Filter_All;
-    size_t selected = 0;
-    size_t scroll_row = 0;
+    size_t shelf_index = 0;
+    UiState ui;
+    ui_state_init(&ui);
 
     while (appletMainLoop()) {
         SDL_Event event;
@@ -137,39 +105,35 @@ int main(int argc, char **argv)
         if (down & HidNpadButton_Plus)
             break;
 
-        if (down & HidNpadButton_AnyLeft)  move(&selected, view_count, -1);
-        if (down & HidNpadButton_AnyRight) move(&selected, view_count, +1);
-        if (down & HidNpadButton_AnyUp)    move(&selected, view_count, -UI_COLS);
-        if (down & HidNpadButton_AnyDown)  move(&selected, view_count, +UI_COLS);
-        if (down & HidNpadButton_L)        move(&selected, view_count, -UI_PAGE);
-        if (down & HidNpadButton_R)        move(&selected, view_count, +UI_PAGE);
+        if (shelves.count > 0) {
+            Shelf *shelf = &shelves.items[shelf_index];
+            size_t before_shelf = shelf_index;
+            size_t before_cursor = shelf->cursor;
 
-        if (down & HidNpadButton_X) {
-            filter = (filter + 1) % Filter_Count;
-            view_count = view ? build_view(&list, filter, view) : 0;
-            selected = 0;
-            scroll_row = 0;
+            if (down & HidNpadButton_AnyLeft)  move_cursor(shelf, -1);
+            if (down & HidNpadButton_AnyRight) move_cursor(shelf, +1);
+            if (down & HidNpadButton_L)        move_cursor(shelf, -PAGE_JUMP);
+            if (down & HidNpadButton_R)        move_cursor(shelf, +PAGE_JUMP);
+
+            if ((down & HidNpadButton_AnyUp) && shelf_index > 0)
+                shelf_index--;
+            if ((down & HidNpadButton_AnyDown) && shelf_index + 1 < shelves.count)
+                shelf_index++;
+
+            if (shelf_index != before_shelf || shelf->cursor != before_cursor)
+                ui_state_bump(&ui);
         }
 
         if (down & HidNpadButton_Y) {
-            rescan(&list, &systems, status, sizeof(status));
-
-            if (list.count > view_capacity) {
-                size_t *grown = realloc(view, list.count * sizeof(*view));
-                if (grown) {
-                    view = grown;
-                    view_capacity = list.count;
-                }
-            }
-
-            view_count = view ? build_view(&list, filter, view) : 0;
-            if (selected >= view_count)
-                selected = view_count ? view_count - 1 : 0;
-            scroll_row = 0;
+            rescan(&list, &systems, &shelves, status, sizeof(status));
+            if (shelf_index >= shelves.count)
+                shelf_index = shelves.count ? shelves.count - 1 : 0;
+            ui_state_bump(&ui);
         }
 
-        if ((down & HidNpadButton_A) && view_count > 0) {
-            const Entry *entry = &list.items[view[selected]];
+        if ((down & HidNpadButton_A) && shelves.count > 0) {
+            const Shelf *shelf = &shelves.items[shelf_index];
+            const Entry *entry = &list.items[shelf->items[shelf->cursor]];
             Result rc = launch_entry(entry, &systems);
 
             if (R_SUCCEEDED(rc))
@@ -182,13 +146,11 @@ int main(int argc, char **argv)
                 snprintf(status, sizeof(status), "launch failed (0x%x)", rc);
         }
 
-        clamp_scroll(selected, &scroll_row);
-        ui_draw(&render, icons, &list, view, view_count, selected, scroll_row,
-                filter, status);
+        ui_draw(&render, icons, &list, &shelves, shelf_index, &ui, status);
     }
 
 done:
-    free(view);
+    shelves_free(&shelves);
     systems_free(&systems);
     entry_list_free(&list);
     icons_destroy(icons);
