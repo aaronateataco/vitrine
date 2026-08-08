@@ -11,12 +11,22 @@ typedef struct {
     float pulse;      ///< 0..1, restarts on selection change.
 } UiState;
 
-/* Settings overlay. Also carries the full control reference, which does not
-   fit along the footer at 720p. */
+void ui_state_init(UiState *state);
+
+/// Call whenever the selection moves, so the cursor animation restarts.
+void ui_state_bump(UiState *state);
+
+/*
+ * Settings overlay. Every row is selectable; section headings are drawn between
+ * them by index, which keeps navigation a simple increment.
+ */
 typedef enum {
-    Setting_ShowHidden = 0,
-    Setting_Rescan     = 1,
-    Setting_Count      = 2,
+    Setting_PosterTiles = 0,
+    Setting_LargeTiles  = 1,
+    Setting_ShowHidden  = 2,
+    Setting_Rescan      = 3,
+    Setting_UnhideAll   = 4,
+    Setting_Count       = 5,
 } SettingRow;
 
 typedef struct {
@@ -24,17 +34,13 @@ typedef struct {
     size_t row;
 } Settings;
 
-void ui_draw_settings(Render *render, const Settings *settings, bool show_hidden,
+void ui_draw_settings(Render *render, const Settings *settings, const Prefs *prefs,
+                      const EntryList *list, const ShelfList *shelves,
                       const char *core_note);
-
-void ui_state_init(UiState *state);
-
-/// Call whenever the selection moves, so the cursor animation restarts.
-void ui_state_bump(UiState *state);
 
 void ui_draw(Render *render, IconCache *icons, const EntryList *list,
              ShelfList *shelves, size_t shelf_index, UiState *state,
-             const OverrideList *overrides, bool show_hidden, const char *status);
+             const OverrideList *overrides, const char *status);
 
 /*
  * Full-screen explainer shown when started in applet mode. Emulator cores and

@@ -121,10 +121,18 @@ void overrides_toggle_promote(OverrideList *overrides, const Entry *entry)
     overrides->dirty = true;
 }
 
+void overrides_unhide_all(OverrideList *overrides)
+{
+    for (size_t i = 0; i < overrides->count; i++)
+        overrides->items[i].hidden = false;
+    overrides->dirty = true;
+}
+
 Result overrides_load(OverrideList *overrides, const char *path)
 {
     overrides->count = 0;
     overrides->dirty = false;
+    memset(&overrides->prefs, 0, sizeof(overrides->prefs));
 
     FILE *file = fopen(path, "rb");
     if (!file)
@@ -155,6 +163,16 @@ Result overrides_load(OverrideList *overrides, const char *path)
     if (!root)
         return MAKERESULT(Module_Libnx, LibnxError_BadInput);
 
+    cJSON *prefs = cJSON_GetObjectItemCaseSensitive(root, "prefs");
+    if (cJSON_IsObject(prefs)) {
+        overrides->prefs.show_hidden =
+            cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(prefs, "show_hidden"));
+        overrides->prefs.poster_tiles =
+            cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(prefs, "poster_tiles"));
+        overrides->prefs.large_tiles =
+            cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(prefs, "large_tiles"));
+    }
+
     cJSON *entries = cJSON_GetObjectItemCaseSensitive(root, "entries");
     if (cJSON_IsObject(entries)) {
         cJSON *node = NULL;
@@ -184,6 +202,13 @@ Result overrides_save(OverrideList *overrides, const char *path)
         return MAKERESULT(Module_Libnx, LibnxError_OutOfMemory);
 
     cJSON_AddNumberToObject(root, "version", CONFIG_VERSION);
+
+    cJSON *prefs = cJSON_AddObjectToObject(root, "prefs");
+    if (prefs) {
+        cJSON_AddBoolToObject(prefs, "show_hidden", overrides->prefs.show_hidden);
+        cJSON_AddBoolToObject(prefs, "poster_tiles", overrides->prefs.poster_tiles);
+        cJSON_AddBoolToObject(prefs, "large_tiles", overrides->prefs.large_tiles);
+    }
 
     cJSON *entries = cJSON_AddObjectToObject(root, "entries");
     if (!entries) {

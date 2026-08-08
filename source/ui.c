@@ -4,29 +4,47 @@
 
 #include "ui.h"
 
-/*
- * Layout. Three shelves fit the viewport with the fourth partly visible, which
- * is what tells the eye the page continues without needing a scrollbar.
- */
 #define MARGIN_X     64
 #define HEADER_H     76
 #define FOOTER_H    108
-#define TILE        132
 #define TILE_GAP     18
 #define SHELF_LABEL  30
 #define SHELF_PAD    26
-#define SHELF_H     (SHELF_LABEL + TILE + SHELF_PAD)
 #define VIEW_TOP     HEADER_H
 #define VIEW_BOTTOM (SCREEN_H - FOOTER_H)
 #define SELECT_SCALE 1.10f
 
-static const SDL_Color COL_BG       = {  14,  16,  20, 255 };
-static const SDL_Color COL_PANEL    = {  26,  30,  38, 255 };
-static const SDL_Color COL_TEXT     = { 240, 242, 246, 255 };
-static const SDL_Color COL_DIM      = { 138, 144, 160, 255 };
-static const SDL_Color COL_FAINT    = {  74,  80,  96, 255 };
-static const SDL_Color COL_ACCENT   = {  90, 169, 255, 255 };
-static const SDL_Color COL_WARN     = { 236, 130, 130, 255 };
+static const SDL_Color COL_BG      = {  14,  16,  20, 255 };
+static const SDL_Color COL_PANEL   = {  26,  30,  38, 255 };
+static const SDL_Color COL_RAISED  = {  38,  46,  62, 255 };
+static const SDL_Color COL_LINE    = {  52,  58,  74, 255 };
+static const SDL_Color COL_TEXT    = { 240, 242, 246, 255 };
+static const SDL_Color COL_DIM     = { 138, 144, 160, 255 };
+static const SDL_Color COL_FAINT   = {  74,  80,  96, 255 };
+static const SDL_Color COL_ACCENT  = {  90, 169, 255, 255 };
+static const SDL_Color COL_WARN    = { 236, 130, 130, 255 };
+
+/*
+ * Tile geometry follows the display preferences. Posters use the 2:3 ratio that
+ * SteamGridDB grids ship in; square matches the Switch's own 1:1 icons.
+ */
+static int tile_w(const Prefs *prefs)
+{
+    if (prefs->poster_tiles)
+        return prefs->large_tiles ? 148 : 116;
+    return prefs->large_tiles ? 168 : 132;
+}
+
+static int tile_h(const Prefs *prefs)
+{
+    int w = tile_w(prefs);
+    return prefs->poster_tiles ? w * 3 / 2 : w;
+}
+
+static int shelf_h(const Prefs *prefs)
+{
+    return SHELF_LABEL + tile_h(prefs) + SHELF_PAD;
+}
 
 void ui_state_init(UiState *state)
 {
@@ -48,16 +66,6 @@ static float approach(float current, float target, float rate)
     return current + delta * rate;
 }
 
-static SDL_Color mix(SDL_Color a, SDL_Color b, float t)
-{
-    SDL_Color out;
-    out.r = (Uint8)(a.r + (b.r - a.r) * t);
-    out.g = (Uint8)(a.g + (b.g - a.g) * t);
-    out.b = (Uint8)(a.b + (b.b - a.b) * t);
-    out.a = (Uint8)(a.a + (b.a - a.a) * t);
-    return out;
-}
-
 /* Stable per-platform tint, so ROM plates are recognisable at a glance. */
 static SDL_Color plate_color(const char *seed)
 {
@@ -75,21 +83,25 @@ static SDL_Color plate_color(const char *seed)
 
 static void draw_tile(Render *render, IconCache *icons, const Entry *entry,
                       size_t entry_index, int x, int y, bool selected, float pulse,
-                      bool hidden)
+                      bool hidden, const Prefs *prefs)
 {
-    int size = TILE;
+    int w = tile_w(prefs);
+    int h = tile_h(prefs);
     int ox = x;
     int oy = y;
 
     if (selected) {
         /* Grow from the centre so neighbours are not pushed visually. */
         float scale = 1.0f + (SELECT_SCALE - 1.0f) * pulse;
-        size = (int)(TILE * scale);
-        ox = x - (size - TILE) / 2;
-        oy = y - (size - TILE) / 2;
+        int sw = (int)(w * scale);
+        int sh = (int)(h * scale);
+        ox = x - (sw - w) / 2;
+        oy = y - (sh - h) / 2;
+        w = sw;
+        h = sh;
     }
 
-    SDL_Rect rect = { ox, oy, size, size };
+    SDL_Rect rect = { ox, oy, w, h };
 
     if (selected)
         render_shadow(render, rect, 10);
@@ -101,81 +113,77 @@ static void draw_tile(Render *render, IconCache *icons, const Entry *entry,
     } else {
         const char *label = entry->author[0] ? entry->author : entry->name;
         render_fill(render, rect, plate_color(label));
-        render_text_fit(render, render->font, rect.x, rect.y + size / 2 - 14,
-                        size, COL_TEXT, label);
+        render_text_fit(render, render->font, rect.x, rect.y + h / 2 - 14, w,
+                        COL_TEXT, label);
     }
 
     if (hidden) {
         /* Only visible in "show hidden" mode, so it must read as excluded. */
         SDL_Color veil = { 14, 16, 20, 170 };
         render_fill(render, rect, veil);
-        render_text_fit(render, render->font, rect.x, rect.y + 6, size,
-                        COL_WARN, "hidden");
+        render_text_fit(render, render->font, rect.x, rect.y + 6, w, COL_WARN,
+                        "hidden");
     }
 
-    if (selected) {
+    if (selected)
         render_outline(render, rect, 3, COL_ACCENT);
-    } else if (!hidden) {
-        /* Recede unselected tiles rather than dimming the whole shelf. */
-        SDL_Color veil = { 14, 16, 20, 110 };
-        render_fill(render, rect, veil);
-    }
+    else if (!hidden)
+        render_fill(render, rect, (SDL_Color){ 14, 16, 20, 110 });
 }
 
 static void draw_shelf(Render *render, IconCache *icons, const EntryList *list,
                        Shelf *shelf, int y, bool active, float pulse,
-                       const OverrideList *overrides)
+                       const OverrideList *overrides, const Prefs *prefs)
 {
     char meta[64];
+    int w = tile_w(prefs);
+    int h = tile_h(prefs);
+    int pitch = w + TILE_GAP;
 
-    SDL_Color label_color = active ? COL_TEXT : COL_DIM;
-    render_text(render, render->font, MARGIN_X, y, label_color, shelf->name);
+    render_text(render, render->font, MARGIN_X, y, active ? COL_TEXT : COL_DIM,
+                shelf->name);
 
     snprintf(meta, sizeof(meta), "%zu", shelf->count);
-    render_text(render, render->font, MARGIN_X + 460, y + 3, COL_FAINT, meta);
+    render_text_right(render, render->font, SCREEN_W - MARGIN_X, y + 3, COL_FAINT, meta);
 
-    if (active) {
-        SDL_Rect bar = { MARGIN_X - 14, y + 2, 4, 20 };
-        render_fill(render, bar, COL_ACCENT);
-    }
+    if (active)
+        render_fill(render, (SDL_Rect){ MARGIN_X - 14, y + 2, 4, 20 }, COL_ACCENT);
 
     int strip_y = y + SHELF_LABEL;
     int visible_w = SCREEN_W - 2 * MARGIN_X;
 
     /* Keep the cursor centred, but never scroll past either end. */
-    float total_w = (float)shelf->count * (TILE + TILE_GAP) - TILE_GAP;
-    float target = (float)shelf->cursor * (TILE + TILE_GAP) + TILE / 2.0f
-                 - visible_w / 2.0f;
+    float total_w = (float)shelf->count * pitch - TILE_GAP;
+    float target = (float)shelf->cursor * pitch + w / 2.0f - visible_w / 2.0f;
     float max_scroll = total_w > visible_w ? total_w - visible_w : 0.0f;
 
-    if (target < 0.0f)        target = 0.0f;
-    if (target > max_scroll)  target = max_scroll;
+    if (target < 0.0f)       target = 0.0f;
+    if (target > max_scroll) target = max_scroll;
 
     shelf->scroll_x = approach(shelf->scroll_x, target, 0.22f);
 
-    SDL_Rect clip = { MARGIN_X - 12, strip_y - 12, visible_w + 24, TILE + 24 };
+    SDL_Rect clip = { MARGIN_X - 12, strip_y - 12, visible_w + 24, h + 24 };
     SDL_RenderSetClipRect(render->renderer, &clip);
 
     for (size_t i = 0; i < shelf->count; i++) {
-        int x = MARGIN_X + (int)(i * (TILE + TILE_GAP) - shelf->scroll_x);
-        if (x + TILE < MARGIN_X - 24 || x > SCREEN_W)
+        int x = MARGIN_X + (int)(i * pitch - shelf->scroll_x);
+        if (x + w < MARGIN_X - 24 || x > SCREEN_W)
             continue;   /* Off-screen: skip the icon decode entirely. */
 
         const Entry *entry = &list->items[shelf->items[i]];
         bool hidden = overrides && overrides_hidden(overrides, entry);
         draw_tile(render, icons, entry, shelf->items[i], x, strip_y,
-                  active && i == shelf->cursor, pulse, hidden);
+                  active && i == shelf->cursor, pulse, hidden, prefs);
     }
 
     SDL_RenderSetClipRect(render->renderer, NULL);
 
     /* Fade the strip into the margins so clipped tiles do not end abruptly. */
     SDL_Color edge = COL_BG;
-    edge.a = 255;
-    render_edge_fade(render, (SDL_Rect){ 0, strip_y - 12, MARGIN_X - 12, TILE + 24 },
+    render_edge_fade(render, (SDL_Rect){ 0, strip_y - 12, MARGIN_X - 12, h + 24 },
                      edge, false);
     render_edge_fade(render, (SDL_Rect){ SCREEN_W - MARGIN_X + 12, strip_y - 12,
-                                         MARGIN_X - 12, TILE + 24 }, edge, true);
+                                         MARGIN_X - 12, h + 24 }, edge, true);
 }
 
 static void draw_header(Render *render, const EntryList *list, const ShelfList *shelves)
@@ -186,8 +194,8 @@ static void draw_header(Render *render, const EntryList *list, const ShelfList *
 
     snprintf(line, sizeof(line), "%zu items across %zu shelves",
              list->count, shelves->count);
-
     render_text(render, render->font, MARGIN_X + 190, 30, COL_FAINT, line);
+
     render_fill(render, (SDL_Rect){ 0, HEADER_H - 2, SCREEN_W, 1 }, COL_PANEL);
 }
 
@@ -201,8 +209,7 @@ static void draw_footer(Render *render, const EntryList *list,
     render_fill(render, (SDL_Rect){ 0, VIEW_BOTTOM, SCREEN_W, FOOTER_H }, COL_PANEL);
 
     if (shelves->count == 0) {
-        render_text(render, render->font_large, MARGIN_X, y, COL_DIM,
-                    "Nothing found");
+        render_text(render, render->font_large, MARGIN_X, y, COL_DIM, "Nothing found");
         render_text(render, render->font, MARGIN_X, y + 40, COL_FAINT,
                     "Check systems.ini, then press Y to rescan");
         return;
@@ -225,6 +232,7 @@ static void draw_footer(Render *render, const EntryList *list,
 
     render_text(render, render->font, MARGIN_X, y + 42, COL_DIM, line);
 
+    /* Right-aligned from a measured width, so it can never run off screen. */
     render_text_right(render, render->font, SCREEN_W - MARGIN_X, y + 42, COL_FAINT,
                       "A  play        -  settings");
 
@@ -232,7 +240,8 @@ static void draw_footer(Render *render, const EntryList *list,
         render_text(render, render->font, MARGIN_X, y + 70, COL_WARN, status);
 }
 
-void ui_draw_settings(Render *render, const Settings *settings, bool show_hidden,
+void ui_draw_settings(Render *render, const Settings *settings, const Prefs *prefs,
+                      const EntryList *list, const ShelfList *shelves,
                       const char *core_note)
 {
     static const char *controls[][2] = {
@@ -244,66 +253,87 @@ void ui_draw_settings(Render *render, const Settings *settings, bool show_hidden
         { "ZL",                 "Move homebrew to Installed Games" },
         { "ZR",                 "Reveal hidden items" },
         { "Y",                  "Rescan library" },
-        { "-",                  "Settings" },
         { "+",                  "Exit" },
     };
 
-    const int panel_w = 760;
-    const int panel_x = (SCREEN_W - panel_w) / 2;
-
-    /* Dim the library rather than hiding it, so context is kept. */
-    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H },
-                (SDL_Color){ 8, 9, 12, 205 });
-    render_fill(render, (SDL_Rect){ panel_x, 40, panel_w, SCREEN_H - 80 }, COL_PANEL);
-    render_outline(render, (SDL_Rect){ panel_x, 40, panel_w, SCREEN_H - 80 }, 2,
-                   (SDL_Color){ 52, 58, 74, 255 });
-
-    const int x = panel_x + 36;
-    render_text(render, render->font_large, x, 64, COL_TEXT, "Settings");
-
-    struct { const char *label; const char *value; } rows[Setting_Count] = {
-        { "Show hidden items", show_hidden ? "On" : "Off" },
-        { "Rescan library",    "" },
+    struct { SettingRow row; const char *label; const char *value; } items[Setting_Count] = {
+        { Setting_PosterTiles, "Cover shape",       prefs->poster_tiles ? "Poster 2:3" : "Square 1:1" },
+        { Setting_LargeTiles,  "Cover size",        prefs->large_tiles ? "Large" : "Standard" },
+        { Setting_ShowHidden,  "Show hidden items", prefs->show_hidden ? "On" : "Off" },
+        { Setting_Rescan,      "Rescan library",    "" },
+        { Setting_UnhideAll,   "Unhide everything", "" },
     };
 
-    int y = 124;
-    for (size_t i = 0; i < Setting_Count; i++) {
-        bool active = (i == settings->row);
+    const int panel_w = 800;
+    const int panel_x = (SCREEN_W - panel_w) / 2;
+    const int x = panel_x + 40;
+    const int right = panel_x + panel_w - 40;
+    char line[192];
 
+    /* Dim the library rather than replacing it, so context is kept. */
+    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H },
+                (SDL_Color){ 8, 9, 12, 210 });
+    render_fill(render, (SDL_Rect){ panel_x, 28, panel_w, SCREEN_H - 56 }, COL_PANEL);
+    render_outline(render, (SDL_Rect){ panel_x, 28, panel_w, SCREEN_H - 56 }, 2, COL_LINE);
+
+    render_text(render, render->font_large, x, 48, COL_TEXT, "Settings");
+
+    int y = 104;
+    for (size_t i = 0; i < Setting_Count; i++) {
+        /* Section headings sit above the rows they introduce. */
+        if (i == Setting_PosterTiles) {
+            render_text(render, render->font, x, y, COL_ACCENT, "Appearance");
+            y += 30;
+        } else if (i == Setting_ShowHidden) {
+            y += 12;
+            render_text(render, render->font, x, y, COL_ACCENT, "Library");
+            y += 30;
+        }
+
+        bool active = (i == settings->row);
         if (active)
-            render_fill(render, (SDL_Rect){ x - 14, y - 6, panel_w - 44, 38 },
-                        (SDL_Color){ 38, 46, 62, 255 });
+            render_fill(render, (SDL_Rect){ x - 16, y - 6, panel_w - 48, 36 }, COL_RAISED);
 
         render_text(render, render->font, x, y, active ? COL_TEXT : COL_DIM,
-                    rows[i].label);
+                    items[i].label);
+        if (items[i].value[0])
+            render_text_right(render, render->font, right, y,
+                              active ? COL_ACCENT : COL_DIM, items[i].value);
+        y += 38;
+    }
 
-        if (rows[i].value[0])
-            render_text_right(render, render->font, panel_x + panel_w - 36, y,
-                              active ? COL_ACCENT : COL_DIM, rows[i].value);
-        y += 44;
+    y += 16;
+    render_fill(render, (SDL_Rect){ x - 16, y, panel_w - 48, 1 }, COL_LINE);
+    y += 18;
+
+    render_text(render, render->font, x, y, COL_ACCENT, "Controls");
+    y += 30;
+    for (size_t i = 0; i < sizeof(controls) / sizeof(controls[0]); i++) {
+        render_text(render, render->font, x, y, COL_TEXT, controls[i][0]);
+        render_text(render, render->font, x + 230, y, COL_FAINT, controls[i][1]);
+        y += 26;
     }
 
     y += 14;
-    render_fill(render, (SDL_Rect){ x - 14, y, panel_w - 44, 1 },
-                (SDL_Color){ 52, 58, 74, 255 });
-    y += 20;
+    render_fill(render, (SDL_Rect){ x - 16, y, panel_w - 48, 1 }, COL_LINE);
+    y += 18;
 
-    render_text(render, render->font, x, y, COL_DIM, "Controls");
-    y += 36;
+    render_text(render, render->font, x, y, COL_ACCENT, "About");
+    y += 30;
 
-    for (size_t i = 0; i < sizeof(controls) / sizeof(controls[0]); i++) {
-        render_text(render, render->font, x, y, COL_ACCENT, controls[i][0]);
-        render_text(render, render->font, x + 210, y, COL_FAINT, controls[i][1]);
-        y += 30;
-    }
+    snprintf(line, sizeof(line), "%zu items across %zu shelves",
+             list->count, shelves->count);
+    render_text(render, render->font, x, y, COL_FAINT, line);
+    y += 26;
+    render_text(render, render->font, x, y, COL_FAINT,
+                "Config: sdmc:/switch/vitrine/");
+    y += 26;
 
-    if (core_note && core_note[0]) {
-        y += 10;
+    if (core_note && core_note[0])
         render_text(render, render->font, x, y, COL_WARN, core_note);
-    }
 
-    render_text_right(render, render->font, panel_x + panel_w - 36, SCREEN_H - 84,
-                      COL_FAINT, "A  toggle        -  close");
+    render_text_right(render, render->font, right, SCREEN_H - 62, COL_FAINT,
+                      "A  change        -  close");
 
     SDL_RenderPresent(render->renderer);
 }
@@ -325,7 +355,6 @@ void ui_draw_mode_gate(Render *render)
     };
 
     render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, COL_BG);
-
     render_text(render, render->font_large, MARGIN_X, 120, COL_ACCENT,
                 "Wrong launch mode");
 
@@ -338,33 +367,36 @@ void ui_draw_mode_gate(Render *render)
 
 void ui_draw(Render *render, IconCache *icons, const EntryList *list,
              ShelfList *shelves, size_t shelf_index, UiState *state,
-             const OverrideList *overrides, bool show_hidden, const char *status)
+             const OverrideList *overrides, const char *status)
 {
+    const Prefs *prefs = &overrides->prefs;
+    int pitch = shelf_h(prefs);
+
     render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, COL_BG);
 
     state->pulse = approach(state->pulse * 1000.0f, 1000.0f, 0.25f) / 1000.0f;
 
     /* Park the active shelf one slot down, so there is context above it. */
-    float target_y = (float)shelf_index * SHELF_H;
+    float target_y = (float)shelf_index * pitch;
     if (shelf_index > 0)
-        target_y -= SHELF_H * 0.35f;
+        target_y -= pitch * 0.35f;
     state->scroll_y = approach(state->scroll_y, target_y, 0.22f);
 
     for (size_t i = 0; i < shelves->count; i++) {
-        int y = VIEW_TOP + (int)(i * SHELF_H - state->scroll_y);
+        int y = VIEW_TOP + (int)(i * pitch - state->scroll_y);
 
-        if (y + SHELF_H < VIEW_TOP - 40 || y > VIEW_BOTTOM + 40)
+        if (y + pitch < VIEW_TOP - 40 || y > VIEW_BOTTOM + 40)
             continue;
 
-        draw_shelf(render, icons, list, &shelves->items[i], y,
-                   i == shelf_index, state->pulse, overrides);
+        draw_shelf(render, icons, list, &shelves->items[i], y, i == shelf_index,
+                   state->pulse, overrides, prefs);
     }
 
     /* Drawn last so shelves scroll under the chrome rather than through it. */
     render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, HEADER_H }, COL_BG);
     draw_header(render, list, shelves);
 
-    if (show_hidden)
+    if (prefs->show_hidden)
         render_text_right(render, render->font, SCREEN_W - MARGIN_X, 30, COL_WARN,
                           "showing hidden");
 

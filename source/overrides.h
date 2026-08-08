@@ -15,7 +15,15 @@ typedef struct {
     bool promote;   ///< Homebrew that should sit with the installed games.
 } Override;
 
+/// Global display preferences, persisted alongside the per-entry overrides.
 typedef struct {
+    bool show_hidden;    ///< Reveal hidden entries so they can be restored.
+    bool poster_tiles;   ///< 2:3 box art instead of 1:1 Switch-style icons.
+    bool large_tiles;    ///< Fewer, bigger tiles per shelf.
+} Prefs;
+
+typedef struct {
+    Prefs     prefs;
     Override *items;
     size_t    count;
     size_t    capacity;
@@ -39,3 +47,6 @@ bool   overrides_promoted(const OverrideList *overrides, const Entry *entry);
 /// Both toggles create the record on demand and mark the list dirty.
 void   overrides_toggle_hidden(OverrideList *overrides, const Entry *entry);
 void   overrides_toggle_promote(OverrideList *overrides, const Entry *entry);
+
+/// Clears every hidden flag; the promote flags are left alone.
+void   overrides_unhide_all(OverrideList *overrides);

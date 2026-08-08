@@ -22,14 +22,13 @@ typedef struct {
     EntryList    list;
     SystemList   systems;
     ShelfList    shelves;
-    OverrideList overrides;
-    bool         show_hidden;
+    OverrideList overrides;   /* also carries the display prefs */
 } Library;
 
 static void library_regroup(Library *lib)
 {
     shelves_build(&lib->shelves, &lib->list, &lib->systems, &lib->overrides,
-                  lib->show_hidden);
+                  lib->overrides.prefs.show_hidden);
 }
 
 static void rescan(Library *lib, char *status, size_t status_size)
@@ -164,18 +163,39 @@ int main(int argc, char **argv)
             } else if (down & HidNpadButton_AnyDown) {
                 settings.row = (settings.row + 1) % Setting_Count;
             } else if (down & HidNpadButton_A) {
-                if (settings.row == Setting_ShowHidden) {
-                    lib.show_hidden = !lib.show_hidden;
-                    library_regroup(&lib);
-                } else {
-                    rescan(&lib, status, sizeof(status));
+                Prefs *prefs = &lib.overrides.prefs;
+
+                switch (settings.row) {
+                    case Setting_PosterTiles:
+                        prefs->poster_tiles = !prefs->poster_tiles;
+                        break;
+                    case Setting_LargeTiles:
+                        prefs->large_tiles = !prefs->large_tiles;
+                        break;
+                    case Setting_ShowHidden:
+                        prefs->show_hidden = !prefs->show_hidden;
+                        library_regroup(&lib);
+                        break;
+                    case Setting_UnhideAll:
+                        overrides_unhide_all(&lib.overrides);
+                        library_regroup(&lib);
+                        break;
+                    default:
+                        rescan(&lib, status, sizeof(status));
+                        break;
                 }
+
+                lib.overrides.dirty = true;
+                mkdir(CONFIG_DIR, 0777);
+                overrides_save(&lib.overrides, CONFIG_PATH);
+
                 if (shelf_index >= lib.shelves.count)
                     shelf_index = lib.shelves.count ? lib.shelves.count - 1 : 0;
                 ui_state_bump(&ui);
             }
 
-            ui_draw_settings(&render, &settings, lib.show_hidden, core_note);
+            ui_draw_settings(&render, &settings, &lib.overrides.prefs, &lib.list,
+                             &lib.shelves, core_note);
             continue;
         }
 
@@ -229,7 +249,7 @@ int main(int argc, char **argv)
         }
 
         if (down & HidNpadButton_ZR) {
-            lib.show_hidden = !lib.show_hidden;
+            lib.overrides.prefs.show_hidden = !lib.overrides.prefs.show_hidden;
             library_regroup(&lib);
             if (shelf_index >= lib.shelves.count)
                 shelf_index = lib.shelves.count ? lib.shelves.count - 1 : 0;
@@ -255,7 +275,7 @@ int main(int argc, char **argv)
         }
 
         ui_draw(&render, icons, &lib.list, &lib.shelves, shelf_index, &ui,
-                &lib.overrides, lib.show_hidden, status);
+                &lib.overrides, status);
     }
 
 done:

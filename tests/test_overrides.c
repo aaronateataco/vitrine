@@ -76,6 +76,11 @@ int main(void)
     overrides_toggle_promote(&o, &rom);
     check("roms cannot be promoted", !overrides_promoted(&o, &rom));
 
+    /* Display prefs ride in the same file. */
+    o.prefs.poster_tiles = true;
+    o.prefs.large_tiles = false;
+    o.prefs.show_hidden = true;
+
     check("save succeeds", R_SUCCEEDED(overrides_save(&o, CONFIG)));
     check("save clears dirty", !o.dirty);
 
@@ -87,6 +92,16 @@ int main(void)
     check("hidden title persisted", overrides_hidden(&loaded, &title));
     check("promotion persisted", overrides_promoted(&loaded, &hb));
     check("reload starts clean", !loaded.dirty);
+    check("poster preference persisted", loaded.prefs.poster_tiles);
+    check("large-tile preference persisted (false)", !loaded.prefs.large_tiles);
+    check("show-hidden preference persisted", loaded.prefs.show_hidden);
+
+    /* Unhide-all clears hidden flags without disturbing promotion. */
+    overrides_unhide_all(&loaded);
+    check("unhide all clears homebrew", !overrides_hidden(&loaded, &hb));
+    check("unhide all clears titles", !overrides_hidden(&loaded, &title));
+    check("unhide all leaves promotion alone", overrides_promoted(&loaded, &hb));
+    check("unhide all marks dirty", loaded.dirty);
 
     /* Entries back at their defaults carry no information and are not written. */
     OverrideList sparse;
