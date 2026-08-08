@@ -49,3 +49,11 @@ Result homebrew_scan(EntryList *list, const char *root);
 
 /* titles.c */
 Result titles_scan(EntryList *list);
+
+/*
+ * Reads NACP name/author out of an NRO's appended asset blob. False when the
+ * file is not an NRO or carries no metadata. Also used by diagnostics to
+ * identify arbitrary NROs such as sdmc:/hbmenu.nro.
+ */
+bool   nro_read_metadata(const char *path, char *name, size_t name_size,
+                         char *author, size_t author_size);

@@ -111,6 +111,21 @@ int main(void)
     }
 
     check("no-metadata NRO falls back to filename", find(&list, "gamma_nometa") != NULL);
+
+    /* The public reader is what diagnostics uses to identify e.g. hbmenu.nro. */
+    char name[0x200] = { 0 };
+    char author[0x100] = { 0 };
+    check("public NRO reader returns metadata",
+          nro_read_metadata(TEST_DIR "/alpha.nro", name, sizeof(name),
+                            author, sizeof(author)));
+    check("public reader name matches", strcmp(name, "Alpha App") == 0);
+    check("public reader author matches", strcmp(author, "Alpha Author") == 0);
+    check("public reader rejects a non-NRO",
+          !nro_read_metadata(TEST_DIR "/notes.txt", name, sizeof(name),
+                             author, sizeof(author)));
+    check("public reader rejects a missing file",
+          !nro_read_metadata(TEST_DIR "/nope.nro", name, sizeof(name),
+                             author, sizeof(author)));
     check("non-NRO file ignored", find(&list, "notes") == NULL);
 
     entry_list_free(&list);

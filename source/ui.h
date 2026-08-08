@@ -28,7 +28,8 @@ typedef enum {
     Setting_ShowHidden  = 3,
     Setting_Rescan      = 4,
     Setting_UnhideAll   = 5,
-    Setting_Fixed       = 6,
+    Setting_Diagnostics = 6,
+    Setting_Fixed       = 7,
 } SettingRow;
 
 typedef struct {

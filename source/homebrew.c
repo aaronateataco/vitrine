@@ -27,6 +27,8 @@ typedef struct {
     AssetSection romfs;
 } AssetHeader;
 
+static bool read_nro_metadata(const char *path, Entry *entry);
+
 static bool has_nro_extension(const char *name)
 {
     const char *dot = strrchr(name, '.');
@@ -47,6 +49,20 @@ static void copy_nacp_field(char *dst, size_t dst_size, const char *src, size_t 
  * Reads name/author out of the NRO's asset blob. Returns false for NROs built
  * without one, which is common enough that the caller must have a fallback.
  */
+bool nro_read_metadata(const char *path, char *name, size_t name_size,
+                       char *author, size_t author_size)
+{
+    Entry probe;
+    memset(&probe, 0, sizeof(probe));
+
+    if (!read_nro_metadata(path, &probe))
+        return false;
+
+    if (name)   copy_nacp_field(name, name_size, probe.name, sizeof(probe.name));
+    if (author) copy_nacp_field(author, author_size, probe.author, sizeof(probe.author));
+    return true;
+}
+
 static bool read_nro_metadata(const char *path, Entry *entry)
 {
     FILE *file = fopen(path, "rb");

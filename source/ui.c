@@ -365,6 +365,9 @@ void ui_draw_settings(Render *render, const Settings *settings, const Prefs *pre
             case Setting_UnhideAll:
                 label = "Unhide everything";
                 break;
+            case Setting_Diagnostics:
+                label = "Save screenshot + report";
+                break;
             default: {
                 const Shelf *shelf = &shelves->items[i - Setting_Fixed];
                 label = shelf->name;

@@ -4,6 +4,7 @@
 #include <sys/stat.h>
 
 #include "config.h"
+#include "diag.h"
 #include "icons.h"
 #include "launch.h"
 #include "overrides.h"
@@ -16,6 +17,9 @@
 #define CONFIG_DIR    "sdmc:/switch/vitrine"
 #define SYSTEMS_PATH  CONFIG_DIR "/systems.ini"
 #define CONFIG_PATH   CONFIG_DIR "/config.json"
+#define LOG_PATH      CONFIG_DIR "/vitrine.log"
+#define REPORT_PATH   CONFIG_DIR "/diagnostics.txt"
+#define SHOTS_DIR     CONFIG_DIR "/screenshots"
 #define PAGE_JUMP      6
 
 typedef struct {
@@ -92,18 +96,27 @@ int main(int argc, char **argv)
     (void)argc;
     (void)argv;
 
+    mkdir(CONFIG_DIR, 0777);
+    diag_open(LOG_PATH);
+    diag_logf("applet mode: %s", launch_is_application_mode() ? "Application" : "other");
+
     Render render;
     if (!render_init(&render)) {
+        diag_logf("render_init FAILED: %s", SDL_GetError());
+        diag_close();
         render_exit(&render);
         return 1;
     }
+    diag_logf("render ready");
 
     padConfigureInput(1, HidNpadStyleSet_NpadStandard);
     PadState pad;
     padInitializeDefault(&pad);
 
     if (!launch_is_application_mode()) {
+        diag_logf("refusing to run: not Application Mode");
         run_mode_gate(&render, &pad);
+        diag_close();
         render_exit(&render);
         return 0;
     }
@@ -124,6 +137,12 @@ int main(int argc, char **argv)
 
     char status[256] = { 0 };
     rescan(&lib, status, sizeof(status));
+    diag_logf("scan: %zu entries across %zu shelves", lib.list.count, lib.shelves.count);
+    for (size_t i = 0; i < lib.systems.count; i++) {
+        const char *core = system_pick_core(&lib.systems.items[i]);
+        diag_logf("system %-28s core=%s", lib.systems.items[i].name,
+                  core ? core : "NONE FOUND");
+    }
 
     size_t shelf_index = 0;
     UiState ui;
@@ -196,6 +215,19 @@ int main(int argc, char **argv)
                             overrides_unhide_all(&lib.overrides);
                             library_regroup(&lib);
                             break;
+                        case Setting_Diagnostics: {
+                            char shot[512] = { 0 };
+                            bool shot_ok = diag_screenshot(render.renderer, SHOTS_DIR,
+                                                           shot, sizeof(shot));
+                            bool rep_ok = diag_write_report(REPORT_PATH, &lib.list,
+                                                            &lib.systems, &lib.shelves,
+                                                            &lib.overrides);
+                            snprintf(status, sizeof(status),
+                                     "diagnostics: report %s, screenshot %s",
+                                     rep_ok ? "ok" : "failed",
+                                     shot_ok ? "ok" : "failed");
+                            break;
+                        }
                         default:
                             rescan(&lib, status, sizeof(status));
                             break;
@@ -219,6 +251,14 @@ int main(int argc, char **argv)
             ui_draw_settings(&render, &settings, &lib.overrides.prefs, &lib.list,
                              &lib.shelves, &lib.overrides, core_note);
             continue;
+        }
+
+        if (down & HidNpadButton_StickL) {
+            char shot[512];
+            if (diag_screenshot(render.renderer, SHOTS_DIR, shot, sizeof(shot)))
+                snprintf(status, sizeof(status), "saved %s", shot);
+            else
+                snprintf(status, sizeof(status), "screenshot failed");
         }
 
         if (down & HidNpadButton_Minus) {
@@ -288,7 +328,11 @@ int main(int argc, char **argv)
         if ((down & HidNpadButton_A) && lib.shelves.count > 0) {
             const Shelf *shelf = &lib.shelves.items[shelf_index];
             const Entry *entry = &lib.list.items[shelf->items[shelf->cursor]];
+            diag_logf("launch kind=%d \"%s\" path=%s", entry->kind, entry->name,
+                      entry->path[0] ? entry->path : "(title)");
+
             Result rc = launch_entry(entry, &lib.systems);
+            diag_logf("launch result 0x%x", rc);
 
             if (R_SUCCEEDED(rc))
                 break;   /* hbloader chainloads, or the system takes over. */
@@ -310,5 +354,7 @@ done:
     entry_list_free(&lib.list);
     icons_destroy(icons);
     render_exit(&render);
+    diag_logf("clean exit");
+    diag_close();
     return 0;
 }
