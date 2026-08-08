@@ -196,8 +196,18 @@ Result overrides_load(OverrideList *overrides, const char *path)
             cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(prefs, "show_hidden"));
         overrides->prefs.poster_tiles =
             cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(prefs, "poster_tiles"));
-        overrides->prefs.large_tiles =
-            cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(prefs, "large_tiles"));
+        /* large_tiles was a bool before cover_size existed; honour it once. */
+        if (cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(prefs, "large_tiles")))
+            overrides->prefs.cover_size = 1;
+
+        cJSON *size = cJSON_GetObjectItemCaseSensitive(prefs, "cover_size");
+        if (cJSON_IsNumber(size) && size->valueint >= 0 && size->valueint <= 2)
+            overrides->prefs.cover_size = size->valueint;
+
+        cJSON *key = cJSON_GetObjectItemCaseSensitive(prefs, "steamgriddb_key");
+        if (cJSON_IsString(key) && key->valuestring)
+            snprintf(overrides->prefs.sgdb_key, sizeof(overrides->prefs.sgdb_key),
+                     "%s", key->valuestring);
 
         cJSON *theme = cJSON_GetObjectItemCaseSensitive(prefs, "theme");
         if (cJSON_IsNumber(theme) && theme->valueint >= 0)
@@ -238,7 +248,9 @@ Result overrides_save(OverrideList *overrides, const char *path)
     if (prefs) {
         cJSON_AddBoolToObject(prefs, "show_hidden", overrides->prefs.show_hidden);
         cJSON_AddBoolToObject(prefs, "poster_tiles", overrides->prefs.poster_tiles);
-        cJSON_AddBoolToObject(prefs, "large_tiles", overrides->prefs.large_tiles);
+        cJSON_AddNumberToObject(prefs, "cover_size", overrides->prefs.cover_size);
+        if (overrides->prefs.sgdb_key[0])
+            cJSON_AddStringToObject(prefs, "steamgriddb_key", overrides->prefs.sgdb_key);
         cJSON_AddNumberToObject(prefs, "theme", overrides->prefs.theme);
     }
 

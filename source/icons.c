@@ -6,9 +6,12 @@
 #include <switch.h>
 
 #include "icons.h"
+#include "sgdb.h"
 
 /* One screenful plus a margin, so scrolling does not thrash the cache. */
 #define ICON_SLOTS 48
+
+static void flush(IconCache *cache);
 
 typedef struct {
     size_t       index;
@@ -19,19 +22,22 @@ typedef struct {
 
 struct IconCache {
     SDL_Renderer             *renderer;
+    char                      covers_dir[256];
     IconSlot                  slots[ICON_SLOTS];
     size_t                    count;
     NsApplicationControlData *control;   ///< ~0x24000; allocated once, reused.
     bool                      ns_ready;
 };
 
-IconCache *icons_create(SDL_Renderer *renderer)
+IconCache *icons_create(SDL_Renderer *renderer, const char *covers_dir)
 {
     IconCache *cache = calloc(1, sizeof(*cache));
     if (!cache)
         return NULL;
 
     cache->renderer = renderer;
+    snprintf(cache->covers_dir, sizeof(cache->covers_dir), "%s",
+             covers_dir ? covers_dir : "");
 
     /* Icons are JPEG on both paths. */
     IMG_Init(IMG_INIT_JPG);
@@ -127,6 +133,12 @@ static IconSlot *find_slot(IconCache *cache, size_t index)
     return NULL;
 }
 
+void icons_flush(IconCache *cache)
+{
+    if (cache)
+        flush(cache);
+}
+
 static void flush(IconCache *cache)
 {
     for (size_t i = 0; i < ICON_SLOTS; i++) {
@@ -137,7 +149,25 @@ static void flush(IconCache *cache)
     cache->count = 0;
 }
 
-SDL_Texture *icons_get(IconCache *cache, const Entry *entry, size_t index)
+/* A downloaded cover wins over the console's own icon when one exists. */
+static SDL_Texture *load_cached_cover(IconCache *cache, const Entry *entry, bool poster)
+{
+    if (!cache->covers_dir[0])
+        return NULL;
+
+    char path[512];
+    sgdb_cache_path(entry, poster, cache->covers_dir, path, sizeof(path));
+
+    FILE *probe = fopen(path, "rb");
+    if (!probe)
+        return NULL;
+    fclose(probe);
+
+    return IMG_LoadTexture(cache->renderer, path);
+}
+
+SDL_Texture *icons_get(IconCache *cache, const Entry *entry, size_t index,
+                       bool poster)
 {
     IconSlot *slot = find_slot(cache, index);
     if (slot)
@@ -146,13 +176,17 @@ SDL_Texture *icons_get(IconCache *cache, const Entry *entry, size_t index)
     if (cache->count == ICON_SLOTS)
         flush(cache);
 
-    SDL_Texture *texture = NULL;
+    SDL_Texture *texture = load_cached_cover(cache, entry, poster);
+    if (texture)
+        goto store;
+
     switch (entry->kind) {
         case EntryKind_Homebrew: texture = load_homebrew_icon(cache, entry); break;
         case EntryKind_Title:    texture = load_title_icon(cache, entry);    break;
         default:                 texture = NULL;                             break;
     }
 
+store:
     for (size_t i = 0; i < ICON_SLOTS; i++) {
         if (cache->slots[i].used)
             continue;

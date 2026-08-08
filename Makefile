@@ -27,8 +27,8 @@ ARCH := -march=armv8-a+crc+crypto -mtune=cortex-a57 -mtp=soft -fPIE
 # and the correct link order changes between portlib releases. Let pkg-config
 # resolve it rather than pinning a hand-written list that silently rots.
 PKGCONF    := $(DEVKITPRO)/portlibs/switch/bin/aarch64-none-elf-pkg-config
-SDL_CFLAGS := $(shell $(PKGCONF) --cflags sdl2 SDL2_image SDL2_ttf)
-SDL_LIBS   := $(shell $(PKGCONF) --libs sdl2 SDL2_image SDL2_ttf)
+SDL_CFLAGS := $(shell $(PKGCONF) --cflags sdl2 SDL2_image SDL2_ttf libcurl)
+SDL_LIBS   := $(shell $(PKGCONF) --libs sdl2 SDL2_image SDL2_ttf libcurl)
 
 CFLAGS   := -g -Wall -Wextra -O2 -ffunction-sections $(ARCH) $(DEFINES)
 CFLAGS   += $(INCLUDE) -D__SWITCH__ $(SDL_CFLAGS)

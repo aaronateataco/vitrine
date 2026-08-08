@@ -40,6 +40,12 @@ void render_text_right(Render *render, TTF_Font *font, int right, int y,
 void render_fill(Render *render, SDL_Rect rect, SDL_Color color);
 void render_outline(Render *render, SDL_Rect rect, int thickness, SDL_Color color);
 
+/*
+ * Masks the corners of the last thing drawn into `rect` by overpainting them
+ * with `bg`. SDL2 has no rounded primitive, and Switch 2 rounds its game icons.
+ */
+void render_round_corners(Render *render, SDL_Rect rect, int radius, SDL_Color bg);
+
 /// Soft drop shadow: concentric rings of decreasing alpha around `rect`.
 void render_shadow(Render *render, SDL_Rect rect, int spread);
 

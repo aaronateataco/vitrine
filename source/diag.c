@@ -190,7 +190,9 @@ bool diag_write_report(const char *path, const EntryList *list,
     fprintf(out, "\n== preferences ==\n");
     fprintf(out, "theme        : %d\n", overrides->prefs.theme);
     fprintf(out, "poster tiles : %s\n", overrides->prefs.poster_tiles ? "yes" : "no");
-    fprintf(out, "large tiles  : %s\n", overrides->prefs.large_tiles ? "yes" : "no");
+    fprintf(out, "cover size   : %d\n", overrides->prefs.cover_size);
+    fprintf(out, "sgdb key     : %s\n",
+            overrides->prefs.sgdb_key[0] ? "set" : "not set");
     fprintf(out, "show hidden  : %s\n", overrides->prefs.show_hidden ? "yes" : "no");
     fprintf(out, "overrides    : %zu recorded\n", overrides->count);
 

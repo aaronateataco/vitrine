@@ -1,5 +1,5 @@
 VITRINE diagnostics report
-built Aug  8 2026 02:24:41
+built Aug  8 2026 02:47:10
 
 == environment ==
 applet type    : Application (title takeover)
@@ -7,17 +7,18 @@ firmware       : 22.1.0
 next-load avail: yes
 
 == preferences ==
-theme        : 2
+theme        : 0
 poster tiles : no
-large tiles  : yes
+large tiles  : no
 show hidden  : no
-overrides    : 24 recorded
+overrides    : 0 recorded
 
 == library ==
 entries : 102 (60 homebrew, 6 roms, 36 installed)
 
-== shelves (3) ==
-  Installed Games                    24 items
+== shelves (4) ==
+  Installed Games                    36 items
+  Homebrew                           60 items
   Nintendo Entertainment System       2 items
   Game Boy Advance                    4 items
 
@@ -26,35 +27,40 @@ entries : 102 (60 homebrew, 6 roms, 36 installed)
 [Nintendo Entertainment System]
   extensions : nes, fds, unf, unif
   args       : "{core}" "{rom}"
-  core[0]    : sdmc:/tico/cores/tico-fceumm.nro  [present]  <- USED
+  core[0]    : sdmc:/switch/vitrine/cores/fceumm_libretro_libnx.nro  [missing]
+  core[1]    : sdmc:/tico/cores/tico-fceumm.nro  [present]  <- USED
   roms[0]    : sdmc:/roms/nes
   roms[1]    : sdmc:/tico/roms/nes
 
 [Super Nintendo]
   extensions : smc, sfc, fig, swc
   args       : "{core}" "{rom}"
-  core[0]    : sdmc:/tico/cores/tico-snes9x.nro  [present]  <- USED
+  core[0]    : sdmc:/switch/vitrine/cores/snes9x_libretro_libnx.nro  [missing]
+  core[1]    : sdmc:/tico/cores/tico-snes9x.nro  [present]  <- USED
   roms[0]    : sdmc:/roms/snes
   roms[1]    : sdmc:/tico/roms/snes
 
 [Game Boy Advance]
   extensions : gba, agb
   args       : "{core}" "{rom}"
-  core[0]    : sdmc:/tico/cores/tico-mgba.nro  [present]  <- USED
+  core[0]    : sdmc:/switch/vitrine/cores/mgba_libretro_libnx.nro  [missing]
+  core[1]    : sdmc:/tico/cores/tico-mgba.nro  [present]  <- USED
   roms[0]    : sdmc:/roms/gba
   roms[1]    : sdmc:/tico/roms/gba
 
 [Nintendo 64]
   extensions : n64, z64, v64
   args       : "{core}" "{rom}"
-  core[0]    : sdmc:/tico/cores/tico-mupen64plus.nro  [present]  <- USED
+  core[0]    : sdmc:/switch/vitrine/cores/mupen64plus_next_libretro_libnx.nro  [missing]
+  core[1]    : sdmc:/tico/cores/tico-mupen64plus.nro  [present]  <- USED
   roms[0]    : sdmc:/roms/n64
   roms[1]    : sdmc:/tico/roms/n64
 
 [PlayStation]
   extensions : cue, bin, chd, m3u, pbp, exe, iso
   args       : "{core}" "{rom}"
-  core[0]    : sdmc:/tico/cores/tico-duckstation.nro  [present]  <- USED
+  core[0]    : sdmc:/switch/vitrine/cores/pcsx_rearmed_libretro_libnx.nro  [missing]
+  core[1]    : sdmc:/tico/cores/tico-duckstation.nro  [present]  <- USED
   roms[0]    : sdmc:/roms/psx
   roms[1]    : sdmc:/tico/roms/psx
 
@@ -63,27 +69,3 @@ sdmc:/hbmenu.nro: "sphaira" by "TotalJustice" (3404641 bytes)
 This is where the console goes when a game exits.
 
 == overrides ==
-  sdmc:/switch/green-nx.nro  promote
-  sdmc:/switch/Viridite Games/com.fingersoft.hillclimb.nro  promote
-  title:01006DC020DB8000  hidden
-  title:05BA7A76B2434000  hidden
-  title:053EEFBFD7D71000  hidden
-  title:05974EFACD552000  hidden
-  title:05A30DCD887FE000  hidden
-  title:05446530ACA7E000  hidden
-  title:05B455625A278000  hidden
-  title:055E0B88744E5000  hidden
-  title:05E0B56E172F5000  hidden
-  title:0547665F86EE7000  hidden
-  title:057BC6BE5F4F1000  hidden
-  title:052FE0C280E20000  hidden
-  title:05003A400C3DA000  hidden
-  sdmc:/switch/Viridite/Viridite-Translation-Core-x64.nro  hidden
-  sdmc:/switch/Viridite/Viridite-Translation-Core-x32.nro  hidden
-  sdmc:/switch/vitrine.nro  hidden
-  sdmc:/switch/uManager.nro  hidden
-  sdmc:/switch/Ultrahand-Reload/Ultrahand-Reload.nro  hidden
-  sdmc:/switch/tinwoo/tinwoo.nro  hidden
-  sdmc:/switch/PortNX/PortNX.nro  hidden
-  title:01006BD018B54000  hidden
-  shelf:Homebrew  hidden

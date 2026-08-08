@@ -15,9 +15,9 @@
 #define SELECT_SCALE 1.10f
 
 /*
- * Themes. "Switch 2" is an approximation of the console's look - near-black
- * with Nintendo red - not a replica of any Nintendo asset; only colour values
- * are used here.
+ * Themes. The Switch 2 pair follows what the console actually ships: only
+ * Basic Dark and Basic Light, monochrome with no accent hue. Colour values
+ * only - no Nintendo assets are involved.
  */
 typedef struct {
     const char *name;
@@ -30,10 +30,17 @@ static const Theme THEMES[] = {
       {  52,  58,  74, 255 }, { 240, 242, 246, 255 }, { 138, 144, 160, 255 },
       {  74,  80,  96, 255 }, {  90, 169, 255, 255 }, { 236, 130, 130, 255 } },
 
-    { "Switch 2",
-      {  10,  10,  12, 255 }, {  22,  22,  26, 255 }, {  40,  40,  46, 255 },
-      {  54,  54,  60, 255 }, { 255, 255, 255, 255 }, { 154, 154, 162, 255 },
-      {  96,  96, 104, 255 }, { 230,   0,  18, 255 }, { 255, 140, 140, 255 } },
+    /* Switch 2 ships only Basic Dark and Basic Light - monochrome, no accent
+       hue - so these deliberately use white/black rather than Nintendo red. */
+    { "Switch 2 Dark",
+      {  15,  15,  15, 255 }, {  38,  38,  38, 255 }, {  64,  64,  64, 255 },
+      {  82,  82,  82, 255 }, { 255, 255, 255, 255 }, { 168, 168, 168, 255 },
+      { 112, 112, 112, 255 }, { 255, 255, 255, 255 }, { 240, 140, 140, 255 } },
+
+    { "Switch 2 Light",
+      { 235, 235, 235, 255 }, { 255, 255, 255, 255 }, { 214, 214, 214, 255 },
+      { 190, 190, 190, 255 }, {  26,  26,  26, 255 }, {  96,  96,  96, 255 },
+      { 140, 140, 140, 255 }, {  26,  26,  26, 255 }, { 176,  46,  46, 255 } },
 
     { "Daylight",
       { 242, 243, 246, 255 }, { 255, 255, 255, 255 }, { 224, 228, 236, 255 },
@@ -73,15 +80,29 @@ size_t ui_settings_count(const ShelfList *shelves)
  */
 static int tile_w(const Prefs *prefs)
 {
-    if (prefs->poster_tiles)
-        return prefs->large_tiles ? 148 : 116;
-    return prefs->large_tiles ? 168 : 132;
+    static const int square[] = { 132, 176, 224 };
+    static const int poster[] = { 116, 152, 196 };
+
+    int step = prefs->cover_size;
+    if (step < 0 || step > 2)
+        step = 0;
+
+    return prefs->poster_tiles ? poster[step] : square[step];
 }
 
 static int tile_h(const Prefs *prefs)
 {
     int w = tile_w(prefs);
     return prefs->poster_tiles ? w * 3 / 2 : w;
+}
+
+static const char *cover_size_name(const Prefs *prefs)
+{
+    switch (prefs->cover_size) {
+        case 1:  return "Large";
+        case 2:  return "Extra large";
+        default: return "Standard";
+    }
 }
 
 static int shelf_h(const Prefs *prefs)
@@ -149,7 +170,7 @@ static void draw_tile(Render *render, IconCache *icons, const Entry *entry,
     if (selected)
         render_shadow(render, rect, 10);
 
-    SDL_Texture *texture = icons_get(icons, entry, entry_index);
+    SDL_Texture *texture = icons_get(icons, entry, entry_index, prefs->poster_tiles);
 
     if (texture) {
         SDL_RenderCopy(render->renderer, texture, NULL, &rect);
@@ -170,6 +191,9 @@ static void draw_tile(Render *render, IconCache *icons, const Entry *entry,
         render_text_fit(render, render->font, rect.x, rect.y + 6, w, g_theme->warn,
                         "hidden");
     }
+
+    /* Switch 2 rounds its icons; scale the radius with the tile. */
+    render_round_corners(render, rect, w / 12, g_theme->bg);
 
     if (selected)
         render_outline(render, rect, 3, g_theme->accent);
@@ -336,6 +360,9 @@ void ui_draw_settings(Render *render, const Settings *settings, const Prefs *pre
         if (i == Setting_Theme && i == start) {
             render_text(render, render->font, x, y, g_theme->accent, "Appearance");
             y += 28;
+        } else if (i == Setting_SgdbKey) {
+            render_text(render, render->font, x, y, g_theme->accent, "Covers");
+            y += 28;
         } else if (i == Setting_ShowHidden) {
             render_text(render, render->font, x, y, g_theme->accent, "Library");
             y += 28;
@@ -355,11 +382,18 @@ void ui_draw_settings(Render *render, const Settings *settings, const Prefs *pre
                 break;
             case Setting_LargeTiles:
                 label = "Cover size";
-                value = prefs->large_tiles ? "Large" : "Standard";
+                value = cover_size_name(prefs);
                 break;
             case Setting_ShowHidden:
                 label = "Show hidden items";
                 value = prefs->show_hidden ? "On" : "Off";
+                break;
+            case Setting_SgdbKey:
+                label = "SteamGridDB API key";
+                value = prefs->sgdb_key[0] ? "Set" : "Not set";
+                break;
+            case Setting_FetchCovers:
+                label = "Download covers for this shelf";
                 break;
             case Setting_Rescan:
                 label = "Rescan library";

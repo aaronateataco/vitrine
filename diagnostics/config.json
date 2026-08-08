@@ -3,7 +3,7 @@
 	"prefs":	{
 		"show_hidden":	false,
 		"poster_tiles":	false,
-		"large_tiles":	true,
+		"large_tiles":	false,
 		"theme":	0
 	},
 	"entries":	{

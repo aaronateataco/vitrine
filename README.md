@@ -46,10 +46,37 @@ asserts the output is a well-formed NRO. Visual layout is the part CI cannot che
 | - | Settings |
 | + | Exit |
 
-Settings covers **Appearance** (theme, cover shape, cover size), **Library** (show hidden,
-rescan, unhide everything) and **Shelves** — a per-platform visibility toggle, so
-Homebrew or any console can be switched off entirely. Themes: Vitrine Dark, Switch 2
-(near-black with Nintendo red), and Daylight.
+Settings covers **Appearance** (theme, cover shape, cover size), **Covers** (SteamGridDB
+key, download), **Library** (show hidden, rescan, unhide everything) and **Shelves** — a
+per-platform visibility toggle, so Homebrew or any console can be switched off entirely.
+
+Four themes: **Vitrine Dark**, **Switch 2 Dark**, **Switch 2 Light** and **Daylight**.
+The Switch 2 pair is monochrome because that is what the console ships — its themes are
+only Basic Dark and Basic Light, with no accent colour. Tiles are drawn with rounded
+corners to match its icon treatment. Colour values only; no Nintendo assets are used.
+
+Cover size has three steps (Standard / Large / Extra large) in both square and poster
+shapes.
+
+## Cover art
+
+VITRINE can pull artwork from [SteamGridDB](https://www.steamgriddb.com). It ships no
+artwork and bundles no key.
+
+1. Get a free API key at `steamgriddb.com/profile/preferences/api`.
+2. **Settings → SteamGridDB API key** opens the system keyboard.
+3. **Settings → Download covers for this shelf** fetches artwork for everything on the
+   shelf you were browsing.
+
+Covers land in `sdmc:/switch/vitrine/covers/`, named by a hash of the entry's identity so
+they survive rescans. Already-cached entries are skipped, so re-running is cheap. A
+downloaded cover takes precedence over the console's own icon.
+
+**Cover shape decides what is requested** — Poster 2:3 fetches 600x900 grids, Square 1:1
+fetches icons. Covers uploaded by `sodasoba` are preferred over all others; remaining
+candidates are ordered by SteamGridDB's own score.
+
+HTTPS needs no CA bundle: devkitPro builds curl against the console's own SSL service.
 
 The footer shows only **A play** and **- settings**; the full reference lives in the
 Settings overlay, because ten bindings do not fit along a 720p footer.

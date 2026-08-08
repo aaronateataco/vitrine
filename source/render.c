@@ -1,3 +1,4 @@
+#include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -250,6 +251,30 @@ void render_outline(Render *render, SDL_Rect rect, int thickness, SDL_Color colo
     for (int i = 0; i < thickness; i++) {
         SDL_Rect r = { rect.x - i, rect.y - i, rect.w + 2 * i, rect.h + 2 * i };
         SDL_RenderDrawRect(render->renderer, &r);
+    }
+}
+
+void render_round_corners(Render *render, SDL_Rect rect, int radius, SDL_Color bg)
+{
+    if (radius <= 0)
+        return;
+
+    SDL_SetRenderDrawColor(render->renderer, bg.r, bg.g, bg.b, 255);
+
+    for (int y = 0; y < radius; y++) {
+        /* Horizontal inset of the circle at this row. */
+        float dy = (float)(radius - y);
+        int inset = radius - (int)(sqrtf((float)(radius * radius) - dy * dy) + 0.5f);
+        if (inset <= 0)
+            continue;
+
+        SDL_Rect spans[4] = {
+            { rect.x,                  rect.y + y,                  inset, 1 },
+            { rect.x + rect.w - inset, rect.y + y,                  inset, 1 },
+            { rect.x,                  rect.y + rect.h - 1 - y,     inset, 1 },
+            { rect.x + rect.w - inset, rect.y + rect.h - 1 - y,     inset, 1 },
+        };
+        SDL_RenderFillRects(render->renderer, spans, 4);
     }
 }
 

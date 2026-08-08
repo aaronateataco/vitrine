@@ -78,7 +78,7 @@ int main(void)
 
     /* Display prefs ride in the same file. */
     o.prefs.poster_tiles = true;
-    o.prefs.large_tiles = false;
+    o.prefs.cover_size = 2;
     o.prefs.show_hidden = true;
 
     check("save succeeds", R_SUCCEEDED(overrides_save(&o, CONFIG)));
@@ -93,7 +93,7 @@ int main(void)
     check("promotion persisted", overrides_promoted(&loaded, &hb));
     check("reload starts clean", !loaded.dirty);
     check("poster preference persisted", loaded.prefs.poster_tiles);
-    check("large-tile preference persisted (false)", !loaded.prefs.large_tiles);
+    check("cover size persisted", loaded.prefs.cover_size == 2);
     check("show-hidden preference persisted", loaded.prefs.show_hidden);
 
     /* Unhide-all clears hidden flags without disturbing promotion. */

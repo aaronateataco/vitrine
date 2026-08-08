@@ -26,10 +26,12 @@ typedef enum {
     Setting_PosterTiles = 1,
     Setting_LargeTiles  = 2,
     Setting_ShowHidden  = 3,
-    Setting_Rescan      = 4,
-    Setting_UnhideAll   = 5,
-    Setting_Diagnostics = 6,
-    Setting_Fixed       = 7,
+    Setting_SgdbKey     = 4,
+    Setting_FetchCovers = 5,
+    Setting_Rescan      = 6,
+    Setting_UnhideAll   = 7,
+    Setting_Diagnostics = 8,
+    Setting_Fixed       = 9,
 } SettingRow;
 
 typedef struct {

@@ -6,6 +6,9 @@
 #include "config.h"
 #include "diag.h"
 #include "icons.h"
+#include "keyboard.h"
+#include "net.h"
+#include "sgdb.h"
 #include "launch.h"
 #include "overrides.h"
 #include "render.h"
@@ -20,6 +23,7 @@
 #define LOG_PATH      CONFIG_DIR "/vitrine.log"
 #define REPORT_PATH   CONFIG_DIR "/diagnostics.txt"
 #define SHOTS_DIR     CONFIG_DIR "/screenshots"
+#define COVERS_DIR    CONFIG_DIR "/covers"
 #define PAGE_JUMP      6
 
 typedef struct {
@@ -74,6 +78,59 @@ static void move_cursor(Shelf *shelf, long delta)
     shelf->cursor = (size_t)next;
 }
 
+/*
+ * Downloads covers for the visible shelf. This blocks on the network, so it
+ * repaints after each entry with a running count instead of freezing.
+ */
+static void fetch_shelf_covers(Library *lib, size_t shelf_index, Render *render,
+                               const Settings *settings, IconCache *icons,
+                               const char *core_note, char *status, size_t status_size)
+{
+    const Prefs *prefs = &lib->overrides.prefs;
+
+    if (!prefs->sgdb_key[0]) {
+        snprintf(status, status_size, "set a SteamGridDB API key first");
+        return;
+    }
+    if (shelf_index >= lib->shelves.count) {
+        snprintf(status, status_size, "no shelf selected");
+        return;
+    }
+    if (!net_init()) {
+        snprintf(status, status_size, "network unavailable");
+        return;
+    }
+
+    const Shelf *shelf = &lib->shelves.items[shelf_index];
+    size_t got = 0;
+    size_t skipped = 0;
+
+    for (size_t i = 0; i < shelf->count; i++) {
+        const Entry *entry = &lib->list.items[shelf->items[i]];
+
+        /* Already cached: leave it alone so repeat runs are cheap. */
+        if (sgdb_cached(entry, prefs->poster_tiles, COVERS_DIR)) {
+            skipped++;
+            continue;
+        }
+
+        snprintf(status, status_size, "covers %zu/%zu: %s",
+                 i + 1, shelf->count, entry->name);
+        ui_draw_settings(render, settings, prefs, &lib->list, &lib->shelves,
+                         &lib->overrides, core_note);
+
+        if (sgdb_fetch_for_entry(prefs->sgdb_key, entry, prefs->poster_tiles,
+                                 COVERS_DIR, NULL, NULL, 0))
+            got++;
+    }
+
+    icons_flush(icons);
+    snprintf(status, status_size, "covers: %zu downloaded, %zu already cached",
+             got, skipped);
+    diag_logf("cover fetch for \"%s\": %zu new, %zu cached",
+              shelf->name, got, skipped);
+}
+
 /* Applet mode cannot fit a core, so refuse up front instead of crashing later. */
 static void run_mode_gate(Render *render, PadState *pad)
 {
@@ -121,7 +178,7 @@ int main(int argc, char **argv)
         return 0;
     }
 
-    IconCache *icons = icons_create(render.renderer);
+    IconCache *icons = icons_create(render.renderer, COVERS_DIR);
 
     Library lib;
     memset(&lib, 0, sizeof(lib));
@@ -211,11 +268,28 @@ int main(int argc, char **argv)
                             prefs->poster_tiles = !prefs->poster_tiles;
                             break;
                         case Setting_LargeTiles:
-                            prefs->large_tiles = !prefs->large_tiles;
+                            prefs->cover_size = (prefs->cover_size + 1) % 3;
                             break;
                         case Setting_ShowHidden:
                             prefs->show_hidden = !prefs->show_hidden;
                             library_regroup(&lib);
+                            break;
+                        case Setting_SgdbKey: {
+                            char key[sizeof(prefs->sgdb_key)];
+                            snprintf(key, sizeof(key), "%s", prefs->sgdb_key);
+
+                            if (keyboard_prompt("SteamGridDB API key",
+                                                "steamgriddb.com/profile/preferences/api",
+                                                key, key, sizeof(key))) {
+                                snprintf(prefs->sgdb_key, sizeof(prefs->sgdb_key),
+                                         "%s", key);
+                                snprintf(status, sizeof(status), "API key saved");
+                            }
+                            break;
+                        }
+                        case Setting_FetchCovers:
+                            fetch_shelf_covers(&lib, shelf_index, &render, &settings,
+                                               icons, core_note, status, sizeof(status));
                             break;
                         case Setting_UnhideAll:
                             overrides_unhide_all(&lib.overrides);
@@ -360,6 +434,7 @@ done:
     entry_list_free(&lib.list);
     icons_destroy(icons);
     render_exit(&render);
+    net_exit();
     diag_logf("clean exit");
     diag_close();
     return 0;

@@ -19,8 +19,9 @@ typedef struct {
 typedef struct {
     bool show_hidden;    ///< Reveal hidden entries so they can be restored.
     bool poster_tiles;   ///< 2:3 box art instead of 1:1 Switch-style icons.
-    bool large_tiles;    ///< Fewer, bigger tiles per shelf.
+    int  cover_size;     ///< 0 standard, 1 large, 2 extra large.
     int  theme;          ///< Index into the UI theme table.
+    char sgdb_key[128];  ///< SteamGridDB API key, entered via the system keyboard.
 } Prefs;
 
 typedef struct {
