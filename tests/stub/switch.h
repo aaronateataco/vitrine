@@ -20,6 +20,7 @@ typedef u32      Result;
 #define LibnxError_NotFound    5
 #define LibnxError_OutOfMemory 4
 #define LibnxError_BadInput    9
+#define LibnxError_IoError     10
 
 typedef struct { char name[0x200]; char author[0x100]; } NacpLanguageEntry;
 typedef struct { NacpLanguageEntry lang[16]; u8 rest[0x1000]; } NacpStruct;

@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "shelves.h"
+#include "overrides.h"
 
 static int failures = 0;
 
@@ -12,12 +13,19 @@ static void check(const char *what, int ok)
     if (!ok) failures++;
 }
 
+/* Overrides key off path (or application id), so fixtures need real identities. */
 static void add_entry(EntryList *list, EntryKind kind, const char *name, int system)
 {
+    static u64 next_title_id = 0x0100000000010000ULL;
+
     Entry *e = entry_list_add(list);
     snprintf(e->name, sizeof(e->name), "%s", name);
+    snprintf(e->path, sizeof(e->path), "/test/%s", name);
     e->kind = kind;
     e->system_index = system;
+
+    if (kind == EntryKind_Title)
+        e->application_id = next_title_id++;
 }
 
 static const Shelf *shelf_at(const ShelfList *s, size_t i)
@@ -58,7 +66,7 @@ int main(void)
 
     ShelfList shelves;
     if (!shelves_init(&shelves)) return 1;
-    shelves_build(&shelves, &list, &systems);
+    shelves_build(&shelves, &list, &systems, NULL, false);
 
     check("empty platform dropped (Saturn)", shelves.count == 4);
 
@@ -88,16 +96,48 @@ int main(void)
 
     /* Cursor must survive a rescan, since Y is pressed mid-browse. */
     shelves.items[2].cursor = 1;
-    shelves_build(&shelves, &list, &systems);
+    shelves_build(&shelves, &list, &systems, NULL, false);
     check("cursor preserved across rebuild", shelves.items[2].cursor == 1);
 
     /* A shrinking shelf must not leave the cursor out of bounds. */
     list.count = 6;   /* drops Fire Emblem and Mario 64 */
-    shelves_build(&shelves, &list, &systems);
+    shelves_build(&shelves, &list, &systems, NULL, false);
     check("cursor clamped when shelf shrinks",
           shelves.count >= 3 && shelves.items[2].cursor < shelves.items[2].count);
     check("emptied platform disappears", shelves.count == 3);
 
+    /* Overrides feed straight into grouping: hidden entries vanish, and
+       promoted homebrew relocates to the installed-games shelf. */
+    list.count = 8;   /* undo the truncation above; restore the full library */
+
+    OverrideList ov;
+    if (!overrides_init(&ov)) return 1;
+
+    shelves_build(&shelves, &list, &systems, &ov, false);
+    size_t baseline = shelves.count;
+
+    const Entry *a_homebrew = NULL;
+    for (size_t i = 0; i < list.count; i++)
+        if (list.items[i].kind == EntryKind_Homebrew) { a_homebrew = &list.items[i]; break; }
+
+    overrides_toggle_hidden(&ov, a_homebrew);
+    shelves_build(&shelves, &list, &systems, &ov, false);
+    check("hidden entry excluded from its shelf",
+          shelves.items[0].count + shelves.items[1].count == 4);
+
+    shelves_build(&shelves, &list, &systems, &ov, true);
+    check("show-hidden brings it back",
+          shelves.items[0].count + shelves.items[1].count == 5);
+
+    overrides_toggle_hidden(&ov, a_homebrew);
+    overrides_toggle_promote(&ov, a_homebrew);
+    shelves_build(&shelves, &list, &systems, &ov, false);
+    check("promoted homebrew joins installed games",
+          strcmp(shelves.items[0].name, "Installed Games") == 0 &&
+          shelves.items[0].count == 3 && shelves.items[1].count == 2);
+    check("shelf count unchanged by promotion", shelves.count == baseline);
+
+    overrides_free(&ov);
     shelves_free(&shelves);
     entry_list_free(&list);
     systems_free(&systems);

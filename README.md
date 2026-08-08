@@ -1,30 +1,123 @@
-# LUDI-NX
+# VITRINE
 
-A source-available emulation frontend for Nintendo Switch homebrew. Lists your **homebrew
-apps**, **installed Switch games**, and **ROMs** in one place, and launches all three.
+A visuals-first game launcher for Nintendo Switch homebrew. Your **installed games**,
+**homebrew apps** and **ROMs** in one place, grouped by platform and launched from a
+single controller-driven interface.
 
-*Ludi* is Latin for "the games"; `NX` is the Switch's codename.
+A *vitrine* is a glass case for showing off a collection — which is what this is.
 
-Written against libnx only — no portlibs, no external dependencies.
+## Collaboration
+
+I would love for an iisu developer to contact me at **aaron@aaronworld.uk** to collaborate
+on making this an official/unofficial client that supports iisu accounts for the Nintendo
+Switch.
+
+## Requires Application Mode
+
+VITRINE refuses to start in applet mode and explains why on screen.
+
+hbloader grants applet mode roughly **56 MB** of heap, against gigabytes under title
+takeover. Emulator cores and high-resolution artwork do not fit in 56 MB, and a ROM
+launched from applet mode dies with *"The software was closed because an error occurred"*.
+
+**To launch correctly:** in hbmenu, **hold R while starting any installed game**, then run
+VITRINE from the menu that appears.
 
 ## Status
 
-Early. Scanning, filtering and all three launch paths are implemented; the UI is
-text-based while the core settles. An icon grid is the next step — the metadata layer
-already locates the artwork, it just isn't decoded yet.
+Working on hardware: scanning, platform grouping, and all three launch paths. The UI is
+SDL2 with the console's own system font.
 
-**Builds clean; not yet run on hardware.** `make` produces a valid `ludi-nx.nro` with no
-warnings. The pure-logic layers (NRO asset parsing, INI parsing, extension matching, ROM
-scanning) are covered by host-side tests passing under AddressSanitizer, and the NRO
-parser has been verified against a real devkitPro-produced NRO. The `ns` and `applet`
-paths — enumerating and launching installed titles — have never executed, and need a
-console to exercise.
+Verified by CI on every push — host tests under AddressSanitizer, plus a cross build that
+asserts the output is a well-formed NRO. Visual layout is the part CI cannot check.
+
+## Controls
+
+| Input | Action |
+|---|---|
+| D-pad ←/→ | Move within a shelf |
+| D-pad ↑/↓ | Change shelf |
+| L / R | Page within a shelf |
+| A | Launch |
+| X | Hide / unhide the selected item |
+| ZL | Move homebrew into Installed Games (and back) |
+| ZR | Show hidden items, so they can be unhidden |
+| Y | Rescan |
+| + | Exit |
+
+## How the library is organised
+
+One vertically scrolling page of horizontal shelves, one per platform. Libraries here are
+very unevenly sized — three GBA ROMs against forty homebrew — and shelves handle that far
+better than a flat grid, which does not scale, or a drill-down menu, which adds a step
+that is absurd for a two-game platform. Grouping and browsing become the same gesture.
+
+Shelf order is deliberate: installed games, then homebrew, then platforms **in the order
+`systems.ini` declares them**, because that ordering is yours. Empty platforms are
+dropped, and each shelf remembers its cursor across rescans.
+
+## Configuration
+
+Two files under `sdmc:/switch/vitrine/`, both created on first run.
+
+**`systems.ini`** — one section per platform:
+
+```ini
+[Game Boy Advance]
+core = sdmc:/tico/cores/tico-mgba.nro
+roms = sdmc:/roms/gba
+roms = sdmc:/tico/roms/gba
+extensions = gba, agb
+args = "{core}" "{rom}"
+```
+
+`roms` is repeatable (up to six directories), so an existing **tico** library is picked up
+in place. Missing directories are skipped silently. `args` defaults to `"{core}" "{rom}"`;
+set it per system if a core wants a different command line. Press **Y** to reload.
+
+`examples/systems-tico.ini` covers all twenty systems a stock tico install provides.
+
+**`config.json`** — your per-item decisions, written automatically:
+
+```json
+{
+  "version": 1,
+  "entries": {
+    "sdmc:/switch/dbi/DBI.nro": { "hidden": true },
+    "sdmc:/switch/RetroArch/retroarch.nro": { "promote": true },
+    "title:0100000000010000": { "hidden": true }
+  }
+}
+```
+
+Homebrew and ROMs are keyed by path; installed titles by application id, since their
+storage path is an implementation detail. Entries back at their defaults are dropped, so
+the file only ever records what you actually changed.
+
+## Cores
+
+VITRINE bundles no cores. A stock tico install already ships them prebuilt as standalone
+NROs in `/tico/cores/`, and VITRINE points at those directly. To build your own,
+`tools/fetch-cores.sh` clones and builds from the public `ticohq/tico-*` forks:
+
+```sh
+./tools/fetch-cores.sh --list       # cores and their licenses
+./tools/fetch-cores.sh              # build all
+./tools/fetch-cores.sh --free-only  # skip the non-commercial ones
+```
+
+**snes9x**, **Genesis Plus GX** and **FBNeo** forbid *commercial* use. Building and running
+them yourself is well within those terms; the restriction only matters if you sell or
+commercially distribute the result. Everything else is GPL-2.0-or-later, GPL-3.0 or
+MPL-2.0.
+
+Cores run as **separate NRO processes** via `envSetNextLoad`. Nothing is linked into
+VITRINE, so each core keeps its own license and this frontend stays independent. If you
+redistribute a GPL core NRO you must also offer its complete corresponding source.
 
 ## Building
 
 ### With a container (recommended on Fedora and any non-Debian distro)
-
-devkitPro publishes an official Switch image, so no toolchain lands on your system:
 
 ```sh
 sudo dnf install -y podman        # or: apt install podman / docker
@@ -33,169 +126,75 @@ podman run --rm -v "$PWD":/project:Z -w /project docker.io/devkitpro/devkita64 m
 
 Two things about that command are load-bearing:
 
-- **`:Z`** relabels the bind mount for SELinux. Without it the container gets permission
+- **`:Z`** relabels the bind mount for SELinux; without it the container gets permission
   denied on Fedora.
 - **The mount point must not be `/build`.** devkitPro's Makefile distinguishes its outer
   and inner invocations with `ifneq ($(BUILD),$(notdir $(CURDIR)))`, and `BUILD` is
-  `build`. Working in a directory named `build` makes that test match, so make takes the
-  inner branch immediately, `OUTPUT` is never set, and the build fails with
-  `No rule to make target '.nacp', needed by '.nro'`.
-
-### With a native toolchain
+  `build`. Working in a directory named `build` makes that test match, so `OUTPUT` is
+  never set and the build fails with `No rule to make target '.nacp'`.
 
 devkitPro's current installer release ships only a macOS package, so a native install on
-Fedora means building their pacman fork yourself. Where devkitPro packaging exists:
+Fedora means building their pacman fork yourself — the container is the easier road.
 
-```sh
-sudo dkp-pacman -S switch-dev
-export DEVKITPRO=/opt/devkitpro
-make
-```
-
-Either route produces `ludi-nx.nro`. Copy it to `/switch/ludi-nx/ludi-nx.nro` on your SD
-card and start it from hbmenu.
+Either route produces `vitrine.nro`. Copy it to `/switch/vitrine/vitrine.nro`.
 
 ### Tests
 
-The platform-independent logic builds against a stub of the libnx API, so it can be
-exercised on a normal machine with no cross toolchain:
-
 ```sh
-make -C tests          # build and run under AddressSanitizer + UBSan
-make -C tests compile  # every source at -O2 -Wall -Wextra -Werror
+make -C tests          # four suites under AddressSanitizer + UBSan
+make -C tests compile  # portable sources at -O2 -Wall -Wextra -Werror
 ```
 
 The `compile` target matters: `-O2` is what surfaces GCC's format-truncation and
-array-bounds diagnostics, which a syntax-only check silently misses.
+array-bounds diagnostics, which a syntax-only check silently misses. It has caught real
+bugs more than once.
 
 ### Releases
 
-CI runs the tests, builds the NRO in devkitPro's official image, and checks the result is
-a well-formed NRO with the expected embedded title. Pushing a `v*` tag additionally
-publishes a **draft** release with an SD-card-ready archive:
+Pushing a `v*` tag publishes a **draft** release with an SD-card-ready archive:
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.0 && git push origin v0.1.0
 ```
-
-The archive unzips onto the root of an SD card, laying out `switch/ludi-nx/` with the NRO
-and a twenty-system `systems.ini`. Releases are drafts, so nothing goes public until you
-review and publish it.
-
-## Controls
-
-| Input | Action |
-|---|---|
-| D-pad up/down | Move |
-| D-pad left/right | Page |
-| A | Launch |
-| X | Cycle filter (all / homebrew / roms / switch) |
-| Y | Rescan |
-| + | Exit |
-
-## Configuring systems
-
-On first run LUDI-NX writes a commented starter file to
-`/switch/ludi-nx/systems.ini`. One section per platform:
-
-```ini
-[Game Boy Advance]
-core = sdmc:/switch/ludi-nx/cores/mgba_libretro_libnx.nro
-roms = sdmc:/roms/gba
-roms = sdmc:/tico/roms/gba
-extensions = gba, agb
-
-[Nintendo 64]
-core = sdmc:/switch/ludi-nx/cores/mupen64plus_next_libretro_libnx.nro
-roms = sdmc:/roms/n64
-roms = sdmc:/tico/roms/n64
-extensions = n64, z64, v64
-args = -L "{core}" --rom "{rom}"
-```
-
-`roms` is repeatable — up to six directories per system, so an existing **tico** library
-is picked up in place alongside LUDI-NX's own layout. Directories that don't exist are
-skipped silently, so listing both costs nothing. tico's exact on-card layout isn't
-documented publicly, so adjust the `sdmc:/tico/...` paths if yours differ.
-
-`args` is optional and defaults to `"{core}" "{rom}"`. Press **Y** in the app to reload
-the file after editing.
-
-## Cores
-
-LUDI-NX bundles no cores. `tools/fetch-cores.sh` clones and builds them from the public
-`ticohq/tico-*` forks on your own machine:
-
-```sh
-./tools/fetch-cores.sh --list     # show cores and licenses
-./tools/fetch-cores.sh            # clone and build all of them
-./tools/fetch-cores.sh --free-only  # skip the non-commercial ones
-```
-
-Three cores — **snes9x**, **Genesis Plus GX** and **FBNeo** — carry licenses forbidding
-*commercial* use. Building and running them yourself is well within those terms, so they
-are built by default; the restriction only matters if you sell or commercially distribute
-the result. Everything else is GPL-2.0-or-later, GPL-3.0 or MPL-2.0.
-
-Cores run as **separate NRO processes**, launched via `envSetNextLoad` exactly like any
-other homebrew. Nothing is linked into LUDI-NX, so each core keeps its own license and
-this frontend stays MIT.
-
-If you redistribute a GPL core NRO you must also offer its complete corresponding
-source, including your changes.
-
-## How it works
-
-**Homebrew** — scans `sdmc:/switch` one level deep, following the hbmenu layout. Name
-and author come from the NRO's appended asset blob: seek to the `size` field in the NRO
-header, read the `ASET` header there, and pull the NACP section. NROs without an asset
-blob fall back to their filename.
-
-**Installed games** — `nsListApplicationRecord` paginates the record list, then
-`nsGetApplicationControlData` fetches control data and `nsGetApplicationDesiredLanguage`
-picks the entry matching the console language. Archived titles (record present, content
-removed) fail the control-data call and are dropped, since they would not launch anyway.
-Launching goes through `appletRequestLaunchApplication`.
-
-That call is restricted to `AppletType_*Application`, or `AppletType_LibraryApplet` on
-[5.0.0+] — covering both title takeover and album takeover on modern firmware. It is
-checked at runtime, and the UI degrades to homebrew-only rather than failing cryptically.
-
-**ROMs** — each configured system's directory is walked recursively and matched against
-its extension list.
 
 ## Layout
 
 ```
 source/
-  entry.h/.c     shared entry model, list container, path helper
-  config.h/.c    systems.ini parsing, extension matching, arg templates
-  homebrew.c     /switch scanning, NRO asset header parsing
-  titles.c       installed title enumeration via ns
-  roms.h/.c      ROM directory scanning
-  launch.h/.c    all three launch paths, with applet-type gating
-  ui.h/.c        console rendering
-  main.c         input handling and main loop
-tools/
-  fetch-cores.sh clone and build cores from source
+  entry.h/.c      shared entry model, list container, path helper
+  config.h/.c     systems.ini parsing, extension matching, arg templates
+  overrides.h/.c  config.json: hiding and re-tagging
+  shelves.h/.c    platform grouping
+  homebrew.c      /switch scanning, NRO asset header parsing
+  titles.c        installed title enumeration via ns
+  roms.h/.c       ROM directory scanning
+  launch.h/.c     all launch paths, with applet-type gating
+  render.h/.c     SDL2, system font, text cache
+  icons.h/.c      lazy icon decoding and texture cache
+  ui.h/.c         shelves, footer, mode gate
+  main.c          input handling and main loop
+  vendor/         cJSON (MIT), vendored
 ```
 
 ## Legal
 
-LUDI-NX contains no ROMs, BIOS images, system firmware, keys, or emulator cores, and
+VITRINE contains no ROMs, BIOS images, system firmware, keys, or emulator cores, and
 performs no DRM circumvention.
 
-Homebrew launching involves no third-party copyrighted work. For installed games,
-LUDI-NX only passes an application id the console already has installed to the OS — the
-system performs all decryption and signature verification itself, exactly as it does from
-the HOME menu. Names and icons are read from the user's own console at runtime and are
-never redistributed. You are responsible for legally owning anything you point it at.
+Homebrew launching involves no third-party copyrighted work. For installed games, VITRINE
+passes an application id the console already has installed to the OS — the system performs
+all decryption and signature verification itself, exactly as from the HOME menu. Names and
+icons are read from your own console at runtime and are never redistributed. You are
+responsible for legally owning anything you point it at.
 
-Not affiliated with Nintendo. Nintendo Switch is a trademark of Nintendo Co., Ltd.
+Bundled third-party code: [cJSON](https://github.com/DaveGamble/cJSON) by Dave Gamble and
+contributors, MIT licensed, in `source/vendor/`.
+
+Not affiliated with Nintendo, tico, or iisu. Nintendo Switch is a trademark of Nintendo
+Co., Ltd.
 
 ## License
 
 MIT terms plus an exclusion clause denying any licence to the tico project and ticohq —
-see [LICENSE](LICENSE). That exclusion is a restriction on who may use the software, so
-this is *source-available* rather than open source in the OSI sense.
+see [LICENSE](LICENSE). That exclusion restricts who may use the software, so this is
+*source-available* rather than open source in the OSI sense.

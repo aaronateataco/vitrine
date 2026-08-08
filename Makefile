@@ -10,14 +10,14 @@ TOPDIR ?= $(CURDIR)
 include $(DEVKITPRO)/libnx/switch_rules
 
 #---------------------------------------------------------------------------------
-TARGET      := ludi-nx
+TARGET      := vitrine
 BUILD       := build
-SOURCES     := source
+SOURCES     := source source/vendor
 DATA        := data
 INCLUDES    := source
 
-APP_TITLE   := LUDI-NX
-APP_AUTHOR  := LUDI-NX contributors
+APP_TITLE   := VITRINE
+APP_AUTHOR  := VITRINE contributors
 APP_VERSION := 0.1.0
 
 #---------------------------------------------------------------------------------

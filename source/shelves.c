@@ -80,7 +80,8 @@ typedef struct {
     size_t cursor;
 } SavedCursor;
 
-void shelves_build(ShelfList *shelves, const EntryList *list, const SystemList *systems)
+void shelves_build(ShelfList *shelves, const EntryList *list, const SystemList *systems,
+                   const OverrideList *overrides, bool show_hidden)
 {
     size_t saved_count = shelves->count;
     SavedCursor *saved = NULL;
@@ -111,12 +112,18 @@ void shelves_build(ShelfList *shelves, const EntryList *list, const SystemList *
         const Entry *entry = &list->items[i];
         Shelf *shelf = NULL;
 
+        if (overrides && !show_hidden && overrides_hidden(overrides, entry))
+            continue;
+
         switch (entry->kind) {
             case EntryKind_Title:
                 shelf = shelf_find(shelves, SHELF_TITLES);
                 break;
             case EntryKind_Homebrew:
-                shelf = shelf_find(shelves, SHELF_HOMEBREW);
+                /* Re-tagged homebrew files sit with the installed games. */
+                shelf = shelf_find(shelves,
+                                   overrides && overrides_promoted(overrides, entry)
+                                       ? SHELF_TITLES : SHELF_HOMEBREW);
                 break;
             case EntryKind_Game:
                 if (entry->system_index >= 0 &&

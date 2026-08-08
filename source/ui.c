@@ -74,7 +74,8 @@ static SDL_Color plate_color(const char *seed)
 }
 
 static void draw_tile(Render *render, IconCache *icons, const Entry *entry,
-                      size_t entry_index, int x, int y, bool selected, float pulse)
+                      size_t entry_index, int x, int y, bool selected, float pulse,
+                      bool hidden)
 {
     int size = TILE;
     int ox = x;
@@ -104,9 +105,17 @@ static void draw_tile(Render *render, IconCache *icons, const Entry *entry,
                         size, COL_TEXT, label);
     }
 
+    if (hidden) {
+        /* Only visible in "show hidden" mode, so it must read as excluded. */
+        SDL_Color veil = { 14, 16, 20, 170 };
+        render_fill(render, rect, veil);
+        render_text_fit(render, render->font, rect.x, rect.y + 6, size,
+                        COL_WARN, "hidden");
+    }
+
     if (selected) {
         render_outline(render, rect, 3, COL_ACCENT);
-    } else {
+    } else if (!hidden) {
         /* Recede unselected tiles rather than dimming the whole shelf. */
         SDL_Color veil = { 14, 16, 20, 110 };
         render_fill(render, rect, veil);
@@ -114,7 +123,8 @@ static void draw_tile(Render *render, IconCache *icons, const Entry *entry,
 }
 
 static void draw_shelf(Render *render, IconCache *icons, const EntryList *list,
-                       Shelf *shelf, int y, bool active, float pulse)
+                       Shelf *shelf, int y, bool active, float pulse,
+                       const OverrideList *overrides)
 {
     char meta[64];
 
@@ -152,8 +162,9 @@ static void draw_shelf(Render *render, IconCache *icons, const EntryList *list,
             continue;   /* Off-screen: skip the icon decode entirely. */
 
         const Entry *entry = &list->items[shelf->items[i]];
+        bool hidden = overrides && overrides_hidden(overrides, entry);
         draw_tile(render, icons, entry, shelf->items[i], x, strip_y,
-                  active && i == shelf->cursor, pulse);
+                  active && i == shelf->cursor, pulse, hidden);
     }
 
     SDL_RenderSetClipRect(render->renderer, NULL);
@@ -171,7 +182,7 @@ static void draw_header(Render *render, const EntryList *list, const ShelfList *
 {
     char line[128];
 
-    render_text(render, render->font_large, MARGIN_X, 22, COL_TEXT, "LUDI-NX");
+    render_text(render, render->font_large, MARGIN_X, 22, COL_TEXT, "VITRINE");
 
     snprintf(line, sizeof(line), "%zu items across %zu shelves",
              list->count, shelves->count);
@@ -214,16 +225,44 @@ static void draw_footer(Render *render, const EntryList *list,
 
     render_text(render, render->font, MARGIN_X, y + 42, COL_DIM, line);
 
-    render_text(render, render->font, SCREEN_W - 430, y + 42, COL_FAINT,
-                "A  play      Y  rescan      +  exit");
+    render_text(render, render->font, SCREEN_W - 560, y + 42, COL_FAINT,
+                "A play   X hide   ZL retag   ZR show hidden   Y rescan   + exit");
 
     if (status && status[0])
         render_text(render, render->font, MARGIN_X, y + 70, COL_WARN, status);
 }
 
+void ui_draw_mode_gate(Render *render)
+{
+    static const char *lines[] = {
+        "VITRINE needs Application Mode.",
+        "",
+        "Started this way, hbloader grants only about 56MB of heap -",
+        "far too little for emulator cores or high-resolution artwork.",
+        "Launching a ROM from here would fail with",
+        "\"The software was closed because an error occurred\".",
+        "",
+        "To fix: return to hbmenu, hold R while launching any game,",
+        "then start VITRINE from the menu that appears.",
+        "",
+        "Press + to exit.",
+    };
+
+    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, COL_BG);
+
+    render_text(render, render->font_large, MARGIN_X, 120, COL_ACCENT,
+                "Wrong launch mode");
+
+    for (size_t i = 0; i < sizeof(lines) / sizeof(lines[0]); i++)
+        render_text(render, render->font, MARGIN_X, 190 + (int)i * 32,
+                    i == 0 ? COL_TEXT : COL_DIM, lines[i]);
+
+    SDL_RenderPresent(render->renderer);
+}
+
 void ui_draw(Render *render, IconCache *icons, const EntryList *list,
              ShelfList *shelves, size_t shelf_index, UiState *state,
-             const char *status)
+             const OverrideList *overrides, bool show_hidden, const char *status)
 {
     render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, COL_BG);
 
@@ -242,12 +281,17 @@ void ui_draw(Render *render, IconCache *icons, const EntryList *list,
             continue;
 
         draw_shelf(render, icons, list, &shelves->items[i], y,
-                   i == shelf_index, state->pulse);
+                   i == shelf_index, state->pulse, overrides);
     }
 
     /* Drawn last so shelves scroll under the chrome rather than through it. */
     render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, HEADER_H }, COL_BG);
     draw_header(render, list, shelves);
+
+    if (show_hidden)
+        render_text(render, render->font, SCREEN_W - 200, 30, COL_WARN,
+                    "showing hidden");
+
     draw_footer(render, list, shelves, shelf_index, status);
 
     SDL_RenderPresent(render->renderer);

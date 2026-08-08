@@ -11,8 +11,9 @@ CFLAGS   = -std=gnu11 -Wall -Wextra -g -I stub -I $(SRC)
 SANFLAGS = -O1 -fsanitize=address,undefined -fno-omit-frame-pointer
 
 HOMEBREW_SRC = test_homebrew.c $(SRC)/homebrew.c $(SRC)/entry.c
-SHELVES_SRC  = test_shelves.c  $(SRC)/shelves.c $(SRC)/config.c $(SRC)/entry.c
+SHELVES_SRC  = test_shelves.c  $(SRC)/shelves.c $(SRC)/config.c $(SRC)/entry.c $(SRC)/overrides.c $(SRC)/vendor/cJSON.c
 CONFIG_SRC   = test_config.c   $(SRC)/config.c $(SRC)/roms.c $(SRC)/entry.c
+OVERRIDE_SRC = test_overrides.c $(SRC)/overrides.c $(SRC)/entry.c $(SRC)/vendor/cJSON.c
 
 .PHONY: all plain compile clean
 
@@ -21,9 +22,11 @@ all: clean
 	@$(CC) $(CFLAGS) $(SANFLAGS) -o test_homebrew $(HOMEBREW_SRC)
 	@$(CC) $(CFLAGS) $(SANFLAGS) -o test_config   $(CONFIG_SRC)
 	@$(CC) $(CFLAGS) $(SANFLAGS) -o test_shelves  $(SHELVES_SRC)
+	@$(CC) $(CFLAGS) $(SANFLAGS) -o test_overrides $(OVERRIDE_SRC)
 	@echo "== test_homebrew ==" && ./test_homebrew
 	@echo "== test_config ==" && ./test_config
 	@echo "== test_shelves ==" && ./test_shelves
+	@echo "== test_overrides ==" && ./test_overrides
 
 plain: clean
 	@$(CC) $(CFLAGS) -O2 -o test_homebrew $(HOMEBREW_SRC)
@@ -37,7 +40,8 @@ plain: clean
 # Only the platform-independent sources are listed. render.c, icons.c, ui.c and
 # main.c need real SDL2 headers, so they are covered by the cross build in CI
 # rather than here.
-PORTABLE_SRC = entry.c config.c roms.c homebrew.c titles.c launch.c shelves.c
+# vendor/cJSON.c is third-party and deliberately excluded from -Werror.
+PORTABLE_SRC = entry.c config.c roms.c homebrew.c titles.c launch.c shelves.c overrides.c
 
 compile:
 	@set -e; for f in $(PORTABLE_SRC); do \
@@ -45,4 +49,4 @@ compile:
 	done; echo "portable sources compile clean at -O2 -Wall -Wextra -Werror"
 
 clean:
-	@rm -rf test_homebrew test_config test_shelves testdata-homebrew testdata-config testdata-shelves.ini
+	@rm -rf test_homebrew test_config test_shelves test_overrides testdata-homebrew testdata-config testdata-shelves.ini testdata-config.json

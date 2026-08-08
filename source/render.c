@@ -64,7 +64,7 @@ bool render_init(Render *render)
     if (TTF_Init() != 0)
         return false;
 
-    render->window = SDL_CreateWindow("LUDI-NX", SDL_WINDOWPOS_CENTERED,
+    render->window = SDL_CreateWindow("VITRINE", SDL_WINDOWPOS_CENTERED,
                                       SDL_WINDOWPOS_CENTERED, SCREEN_W, SCREEN_H, 0);
     if (!render->window)
         return false;

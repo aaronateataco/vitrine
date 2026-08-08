@@ -18,4 +18,11 @@ void ui_state_bump(UiState *state);
 
 void ui_draw(Render *render, IconCache *icons, const EntryList *list,
              ShelfList *shelves, size_t shelf_index, UiState *state,
-             const char *status);
+             const OverrideList *overrides, bool show_hidden, const char *status);
+
+/*
+ * Full-screen explainer shown when started in applet mode. Emulator cores and
+ * high-resolution artwork do not fit in the ~56MB hbloader grants there, so the
+ * app refuses to run rather than crashing later.
+ */
+void ui_draw_mode_gate(Render *render);

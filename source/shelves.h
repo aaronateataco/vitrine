@@ -1,6 +1,7 @@
 #pragma once
 
 #include "config.h"
+#include "overrides.h"
 
 enum { SHELF_NAME_LEN = 64 };
 
@@ -33,4 +34,5 @@ void shelves_free(ShelfList *shelves);
  * since that ordering is the user's own. Empty shelves are dropped.
  * Cursors survive a rebuild where the shelf name is unchanged.
  */
-void shelves_build(ShelfList *shelves, const EntryList *list, const SystemList *systems);
+void shelves_build(ShelfList *shelves, const EntryList *list, const SystemList *systems,
+                   const OverrideList *overrides, bool show_hidden);

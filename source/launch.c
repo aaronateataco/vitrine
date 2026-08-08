@@ -27,6 +27,12 @@ bool launch_can_launch_title(void)
     }
 }
 
+bool launch_is_application_mode(void)
+{
+    AppletType type = appletGetAppletType();
+    return type == AppletType_Application || type == AppletType_SystemApplication;
+}
+
 static Result launch_homebrew(const Entry *entry)
 {
     if (!launch_can_launch_homebrew())

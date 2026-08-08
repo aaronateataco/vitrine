@@ -132,9 +132,9 @@ Result systems_write_example(const char *path)
     if (!file)
         return MAKERESULT(Module_Libnx, LibnxError_NotFound);
 
-    fputs("# LUDI-NX systems configuration.\n"
+    fputs("# VITRINE systems configuration.\n"
           "#\n"
-          "# One section per platform. LUDI-NX ships no cores and no ROMs - point\n"
+          "# One section per platform. VITRINE ships no cores and no ROMs - point\n"
           "# 'core' at a core NRO you built yourself, and 'roms' at your own dumps.\n"
           "#\n"
           "#   core        path to the core NRO\n"
