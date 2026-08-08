@@ -39,6 +39,23 @@ bool scene_load_model(Scene *scene, const char *path);
 void scene_clear_model(Scene *scene);
 bool scene_has_model(const Scene *scene);
 
+/*
+ * Trophy Room. A medal is a textured coin with a procedurally striped ribbon:
+ * the achievement badge is mapped onto both faces, the rim and ribbon are
+ * shaded separately. Lighting is metallic-looking Blinn-Phong rather than true
+ * PBR - there is no environment map to sample on a console launcher, and the
+ * cost of one would not buy much at this size.
+ */
+
+/// Uploads a PNG as a GL texture. Returns 0 on failure.
+unsigned scene_load_texture(const char *path);
+void     scene_free_texture(unsigned texture);
+
+/// Draws a row of medals, `focus` sitting forward and upright.
+void scene_draw_medals(Scene *scene, Render *render, const SceneCamera *camera,
+                       SDL_Rect viewport, float seconds,
+                       const unsigned *textures, size_t count, size_t focus);
+
 void scene_camera_reset(SceneCamera *camera);
 
 /*

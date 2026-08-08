@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include <GLES2/gl2.h>
+#include <SDL2/SDL_image.h>
 
 #include "diag.h"
 #include "scene.h"
@@ -15,7 +16,18 @@
 
 #define PI_F 3.14159265358979f
 
+#define COIN_SEGMENTS 48
+
 struct Scene {
+    GLuint medal_program;
+    GLuint coin_vbo;
+    GLsizei coin_face_vertices;   ///< Front+back, drawn textured.
+    GLsizei coin_rim_vertices;    ///< Rim strip, drawn as metal.
+    GLuint ribbon_vbo;
+    GLsizei ribbon_vertices;
+    GLint  m_pos, m_normal, m_uv;
+    GLint  m_mvp, m_model, m_tex, m_eye, m_mode, m_tint;
+
     GLuint program;
     GLuint vbo;
     GLuint model_vbo;
@@ -149,6 +161,8 @@ static void mat_rotate_y(float *m, float radians)
     m[10] = cosf(radians);
 }
 
+static bool setup_medal(Scene *scene);
+
 static GLuint compile(GLenum type, const char *source)
 {
     GLuint shader = glCreateShader(type);
@@ -211,6 +225,11 @@ Scene *scene_create(void)
     glBindBuffer(GL_ARRAY_BUFFER, scene->vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(CUBE), CUBE, GL_STATIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    /* Trophies are optional: if the medal program fails the room still opens
+       with the placeholder, rather than taking 3D down entirely. */
+    if (!setup_medal(scene))
+        diag_logf("medal pipeline unavailable; trophies will not render");
 
     diag_logf("scene ready (GL_VERSION %s)", (const char *)glGetString(GL_VERSION));
     return scene;
@@ -385,6 +404,13 @@ void scene_destroy(Scene *scene)
 
     scene_clear_model(scene);
 
+    if (scene->coin_vbo)
+        glDeleteBuffers(1, &scene->coin_vbo);
+    if (scene->ribbon_vbo)
+        glDeleteBuffers(1, &scene->ribbon_vbo);
+    if (scene->medal_program)
+        glDeleteProgram(scene->medal_program);
+
     if (scene->vbo)
         glDeleteBuffers(1, &scene->vbo);
     if (scene->program)
@@ -499,4 +525,355 @@ void scene_draw(Scene *scene, Render *render, const SceneCamera *camera,
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_SCISSOR_TEST);
     glEnable(GL_BLEND);
+}
+
+/* ---- Trophy Room -------------------------------------------------------- */
+
+static const char *MEDAL_VERTEX_SRC =
+    "attribute vec3 a_pos;\n"
+    "attribute vec3 a_normal;\n"
+    "attribute vec2 a_uv;\n"
+    "uniform mat4 u_mvp;\n"
+    "uniform mat4 u_model;\n"
+    "varying vec3 v_normal;\n"
+    "varying vec2 v_uv;\n"
+    "varying vec3 v_world;\n"
+    "void main() {\n"
+    "    v_normal = mat3(u_model[0].xyz, u_model[1].xyz, u_model[2].xyz) * a_normal;\n"
+    "    v_uv = a_uv;\n"
+    "    v_world = (u_model * vec4(a_pos, 1.0)).xyz;\n"
+    "    gl_Position = u_mvp * vec4(a_pos, 1.0);\n"
+    "}\n";
+
+static const char *MEDAL_FRAGMENT_SRC =
+    "precision mediump float;\n"
+    "varying vec3 v_normal;\n"
+    "varying vec2 v_uv;\n"
+    "varying vec3 v_world;\n"
+    "uniform sampler2D u_tex;\n"
+    "uniform vec3 u_eye;\n"
+    "uniform vec3 u_tint;\n"
+    "uniform float u_mode;\n"   /* 0 badge face, 1 metal rim, 2 fabric ribbon */
+    "void main() {\n"
+    "    vec3 n = normalize(v_normal);\n"
+    "    vec3 v = normalize(u_eye - v_world);\n"
+    "    vec3 l = normalize(vec3(0.5, 0.9, 0.7));\n"
+    "    vec3 h = normalize(l + v);\n"
+    "    float d = max(dot(n, l), 0.0);\n"
+    "    float spec = pow(max(dot(n, h), 0.0), 48.0);\n"
+    "    vec3 base;\n"
+    "    float metal;\n"
+    "    if (u_mode < 0.5) {\n"
+    "        base = texture2D(u_tex, v_uv).rgb;\n"
+    "        metal = 0.35;\n"
+    "    } else if (u_mode < 1.5) {\n"
+    "        base = u_tint;\n"
+    "        metal = 1.0;\n"
+    "    } else {\n"
+    /* Two crossed sine bands read as a woven fabric at this scale. */
+    "        float warp = 0.5 + 0.5 * sin(v_uv.y * 140.0);\n"
+    "        float weft = 0.5 + 0.5 * sin(v_uv.x * 70.0);\n"
+    "        base = u_tint * (0.78 + 0.22 * warp * weft);\n"
+    "        metal = 0.08;\n"
+    "    }\n"
+    "    gl_FragColor = vec4(base * (0.34 + 0.66 * d)\n"
+    "                        + spec * metal * vec3(1.0, 0.94, 0.78), 1.0);\n"
+    "}\n";
+
+static void push_vertex(float *out, size_t *n, float px, float py, float pz,
+                        float nx, float ny, float nz, float u, float v)
+{
+    float *dst = out + (*n) * 8;
+    dst[0] = px; dst[1] = py; dst[2] = pz;
+    dst[3] = nx; dst[4] = ny; dst[5] = nz;
+    dst[6] = u;  dst[7] = v;
+    (*n)++;
+}
+
+/* A coin: two textured faces plus a rim strip, generated once at startup. */
+static bool build_coin(Scene *scene)
+{
+    const float radius = 1.0f;
+    const float half = 0.11f;
+
+    size_t max_vertices = (size_t)COIN_SEGMENTS * 12;
+    float *data = calloc(max_vertices * 8, sizeof(float));
+    if (!data)
+        return false;
+
+    size_t n = 0;
+
+    for (int i = 0; i < COIN_SEGMENTS; i++) {
+        float a0 = (float)i / COIN_SEGMENTS * 2.0f * PI_F;
+        float a1 = (float)(i + 1) / COIN_SEGMENTS * 2.0f * PI_F;
+        float c0 = cosf(a0), s0 = sinf(a0);
+        float c1 = cosf(a1), s1 = sinf(a1);
+
+        /* Front face, badge mapped across the disc. */
+        push_vertex(data, &n, 0, 0, half, 0, 0, 1, 0.5f, 0.5f);
+        push_vertex(data, &n, c0 * radius, s0 * radius, half, 0, 0, 1,
+                    0.5f + 0.5f * c0, 0.5f - 0.5f * s0);
+        push_vertex(data, &n, c1 * radius, s1 * radius, half, 0, 0, 1,
+                    0.5f + 0.5f * c1, 0.5f - 0.5f * s1);
+
+        /* Back face, wound the other way so it survives backface culling. */
+        push_vertex(data, &n, 0, 0, -half, 0, 0, -1, 0.5f, 0.5f);
+        push_vertex(data, &n, c1 * radius, s1 * radius, -half, 0, 0, -1,
+                    0.5f - 0.5f * c1, 0.5f - 0.5f * s1);
+        push_vertex(data, &n, c0 * radius, s0 * radius, -half, 0, 0, -1,
+                    0.5f - 0.5f * c0, 0.5f - 0.5f * s0);
+    }
+
+    scene->coin_face_vertices = (GLsizei)n;
+
+    for (int i = 0; i < COIN_SEGMENTS; i++) {
+        float a0 = (float)i / COIN_SEGMENTS * 2.0f * PI_F;
+        float a1 = (float)(i + 1) / COIN_SEGMENTS * 2.0f * PI_F;
+        float c0 = cosf(a0), s0 = sinf(a0);
+        float c1 = cosf(a1), s1 = sinf(a1);
+
+        push_vertex(data, &n, c0 * radius, s0 * radius,  half, c0, s0, 0, 0, 0);
+        push_vertex(data, &n, c0 * radius, s0 * radius, -half, c0, s0, 0, 0, 1);
+        push_vertex(data, &n, c1 * radius, s1 * radius, -half, c1, s1, 0, 1, 1);
+
+        push_vertex(data, &n, c0 * radius, s0 * radius,  half, c0, s0, 0, 0, 0);
+        push_vertex(data, &n, c1 * radius, s1 * radius, -half, c1, s1, 0, 1, 1);
+        push_vertex(data, &n, c1 * radius, s1 * radius,  half, c1, s1, 0, 1, 0);
+    }
+
+    scene->coin_rim_vertices = (GLsizei)n - scene->coin_face_vertices;
+
+    glGenBuffers(1, &scene->coin_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, scene->coin_vbo);
+    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(n * 8 * sizeof(float)), data,
+                 GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    free(data);
+    return true;
+}
+
+/* A ribbon: a tapering strip that twists as it rises, attached above the coin. */
+static bool build_ribbon(Scene *scene)
+{
+    enum { STEPS = 24 };
+
+    float *data = calloc(STEPS * 6 * 8, sizeof(float));
+    if (!data)
+        return false;
+
+    size_t n = 0;
+
+    for (int i = 0; i < STEPS; i++) {
+        float t0 = (float)i / STEPS;
+        float t1 = (float)(i + 1) / STEPS;
+
+        float y0 = 1.0f + t0 * 1.5f;
+        float y1 = 1.0f + t1 * 1.5f;
+        float w0 = 0.34f - 0.10f * t0;
+        float w1 = 0.34f - 0.10f * t1;
+
+        /* The twist is what stops it reading as a flat rectangle. */
+        float a0 = t0 * 1.6f;
+        float a1 = t1 * 1.6f;
+        float x0 = sinf(a0) * 0.20f, z0 = cosf(a0) * 0.10f;
+        float x1 = sinf(a1) * 0.20f, z1 = cosf(a1) * 0.10f;
+
+        push_vertex(data, &n, x0 - w0, y0, z0, 0, 0, 1, 0.0f, t0);
+        push_vertex(data, &n, x0 + w0, y0, z0, 0, 0, 1, 1.0f, t0);
+        push_vertex(data, &n, x1 + w1, y1, z1, 0, 0, 1, 1.0f, t1);
+
+        push_vertex(data, &n, x0 - w0, y0, z0, 0, 0, 1, 0.0f, t0);
+        push_vertex(data, &n, x1 + w1, y1, z1, 0, 0, 1, 1.0f, t1);
+        push_vertex(data, &n, x1 - w1, y1, z1, 0, 0, 1, 0.0f, t1);
+    }
+
+    scene->ribbon_vertices = (GLsizei)n;
+
+    glGenBuffers(1, &scene->ribbon_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, scene->ribbon_vbo);
+    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(n * 8 * sizeof(float)), data,
+                 GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    free(data);
+    return true;
+}
+
+unsigned scene_load_texture(const char *path)
+{
+    SDL_Surface *raw = IMG_Load(path);
+    if (!raw)
+        return 0;
+
+    SDL_Surface *rgba = SDL_ConvertSurfaceFormat(raw, SDL_PIXELFORMAT_ABGR8888, 0);
+    SDL_FreeSurface(raw);
+    if (!rgba)
+        return 0;
+
+    GLuint texture = 0;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, rgba->w, rgba->h, 0, GL_RGBA,
+                 GL_UNSIGNED_BYTE, rgba->pixels);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    SDL_FreeSurface(rgba);
+    return texture;
+}
+
+void scene_free_texture(unsigned texture)
+{
+    if (texture)
+        glDeleteTextures(1, (const GLuint *)&texture);
+}
+
+static void bind_medal_attributes(const Scene *scene, GLuint vbo)
+{
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    glEnableVertexAttribArray((GLuint)scene->m_pos);
+    glVertexAttribPointer((GLuint)scene->m_pos, 3, GL_FLOAT, GL_FALSE,
+                          8 * sizeof(GLfloat), (void *)0);
+    glEnableVertexAttribArray((GLuint)scene->m_normal);
+    glVertexAttribPointer((GLuint)scene->m_normal, 3, GL_FLOAT, GL_FALSE,
+                          8 * sizeof(GLfloat), (void *)(3 * sizeof(GLfloat)));
+    glEnableVertexAttribArray((GLuint)scene->m_uv);
+    glVertexAttribPointer((GLuint)scene->m_uv, 2, GL_FLOAT, GL_FALSE,
+                          8 * sizeof(GLfloat), (void *)(6 * sizeof(GLfloat)));
+}
+
+void scene_draw_medals(Scene *scene, Render *render, const SceneCamera *camera,
+                       SDL_Rect viewport, float seconds,
+                       const unsigned *textures, size_t count, size_t focus)
+{
+    if (!scene || !scene->medal_program || count == 0)
+        return;
+
+    SDL_RenderFlush(render->renderer);
+
+    int output_h = 0;
+    SDL_GetRendererOutputSize(render->renderer, NULL, &output_h);
+    int gl_y = output_h - viewport.y - viewport.h;
+
+    glViewport(viewport.x, gl_y, viewport.w, viewport.h);
+    glEnable(GL_SCISSOR_TEST);
+    glScissor(viewport.x, gl_y, viewport.w, viewport.h);
+    glEnable(GL_DEPTH_TEST);
+    glDepthFunc(GL_LESS);
+    glDisable(GL_BLEND);
+    glClearDepthf(1.0f);
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    float eye[3] = {
+        camera->target[0] + camera->distance * cosf(camera->pitch) * sinf(camera->yaw),
+        camera->target[1] + camera->distance * sinf(camera->pitch),
+        camera->target[2] + camera->distance * cosf(camera->pitch) * cosf(camera->yaw),
+    };
+
+    float projection[16];
+    float view[16];
+    mat_perspective(projection, 50.0f * PI_F / 180.0f,
+                    (float)viewport.w / (float)viewport.h, 0.1f, 100.0f);
+    mat_look_at(view, eye, camera->target);
+
+    glUseProgram(scene->medal_program);
+    glUniform3f(scene->m_eye, eye[0], eye[1], eye[2]);
+    glUniform1i(scene->m_tex, 0);
+    glActiveTexture(GL_TEXTURE0);
+
+    const float spacing = 2.8f;
+    float origin = -((float)count - 1.0f) * spacing * 0.5f;
+
+    for (size_t i = 0; i < count; i++) {
+        bool focused = (i == focus);
+
+        float translate[16];
+        mat_identity(translate);
+        translate[12] = origin + (float)i * spacing;
+        translate[13] = focused ? 0.25f : 0.0f;
+        translate[14] = focused ? 0.8f : 0.0f;
+
+        /* Only the focused medal spins; a wall of spinning coins is noise. */
+        float spin[16];
+        mat_rotate_y(spin, focused ? seconds * 0.9f : 0.35f);
+
+        float model[16];
+        float mvp[16];
+        mat_multiply(model, translate, spin);
+        mat_multiply(mvp, projection, view);
+        mat_multiply(mvp, mvp, model);
+
+        glUniformMatrix4fv(scene->m_mvp, 1, GL_FALSE, mvp);
+        glUniformMatrix4fv(scene->m_model, 1, GL_FALSE, model);
+
+        /* Ribbon first: it sits behind the coin from most angles. */
+        if (scene->ribbon_vbo) {
+            bind_medal_attributes(scene, scene->ribbon_vbo);
+            glUniform1f(scene->m_mode, 2.0f);
+            glUniform3f(scene->m_tint, focused ? 0.72f : 0.48f, 0.12f, 0.18f);
+            glDrawArrays(GL_TRIANGLES, 0, scene->ribbon_vertices);
+        }
+
+        bind_medal_attributes(scene, scene->coin_vbo);
+
+        glBindTexture(GL_TEXTURE_2D, i < count ? (GLuint)textures[i] : 0);
+        glUniform1f(scene->m_mode, textures[i] ? 0.0f : 1.0f);
+        glUniform3f(scene->m_tint, 0.85f, 0.68f, 0.30f);
+        glDrawArrays(GL_TRIANGLES, 0, scene->coin_face_vertices);
+
+        glUniform1f(scene->m_mode, 1.0f);
+        glUniform3f(scene->m_tint, 0.85f, 0.68f, 0.30f);
+        glDrawArrays(GL_TRIANGLES, scene->coin_face_vertices,
+                     scene->coin_rim_vertices);
+    }
+
+    glDisableVertexAttribArray((GLuint)scene->m_pos);
+    glDisableVertexAttribArray((GLuint)scene->m_normal);
+    glDisableVertexAttribArray((GLuint)scene->m_uv);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+    glUseProgram(0);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_SCISSOR_TEST);
+    glEnable(GL_BLEND);
+}
+
+static bool setup_medal(Scene *scene)
+{
+    GLuint vertex = compile(GL_VERTEX_SHADER, MEDAL_VERTEX_SRC);
+    GLuint fragment = compile(GL_FRAGMENT_SHADER, MEDAL_FRAGMENT_SRC);
+    if (!vertex || !fragment)
+        return false;
+
+    GLuint program = glCreateProgram();
+    glAttachShader(program, vertex);
+    glAttachShader(program, fragment);
+    glLinkProgram(program);
+    glDeleteShader(vertex);
+    glDeleteShader(fragment);
+
+    GLint ok = GL_FALSE;
+    glGetProgramiv(program, GL_LINK_STATUS, &ok);
+    if (!ok) {
+        char log[512] = { 0 };
+        glGetProgramInfoLog(program, sizeof(log) - 1, NULL, log);
+        diag_logf("medal program link failed: %s", log);
+        glDeleteProgram(program);
+        return false;
+    }
+
+    scene->medal_program = program;
+    scene->m_pos = glGetAttribLocation(program, "a_pos");
+    scene->m_normal = glGetAttribLocation(program, "a_normal");
+    scene->m_uv = glGetAttribLocation(program, "a_uv");
+    scene->m_mvp = glGetUniformLocation(program, "u_mvp");
+    scene->m_model = glGetUniformLocation(program, "u_model");
+    scene->m_tex = glGetUniformLocation(program, "u_tex");
+    scene->m_eye = glGetUniformLocation(program, "u_eye");
+    scene->m_mode = glGetUniformLocation(program, "u_mode");
+    scene->m_tint = glGetUniformLocation(program, "u_tint");
+
+    return build_coin(scene) && build_ribbon(scene);
 }

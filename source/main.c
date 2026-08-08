@@ -13,6 +13,7 @@
 #include "sgdb.h"
 #include "launch.h"
 #include "overrides.h"
+#include "ra.h"
 #include "render.h"
 #include "rooms.h"
 #include "roms.h"
@@ -29,6 +30,8 @@
 #define SHOTS_DIR     CONFIG_DIR "/screenshots"
 #define COVERS_DIR    CONFIG_DIR "/covers"
 #define ROOMS_PATH    CONFIG_DIR "/franchises.json"
+#define BADGES_DIR    CONFIG_DIR "/badges"
+#define TROPHY_WINDOW_MINUTES 43200   /* ~30 days of unlocks */
 #define PAGE_JUMP      6
 
 typedef struct {
@@ -216,6 +219,77 @@ static void picker_preview(CoverPicker *picker, Render *render)
     picker->preview_index = picker->index;
 }
 
+/*
+ * Trophy Room. Badges are downloaded once and uploaded as GL textures; a medal
+ * without a texture still renders as a plain metal coin rather than vanishing.
+ */
+typedef struct {
+    bool         open;
+    RaTrophyList trophies;
+    unsigned     textures[RA_MAX_TROPHIES];
+    size_t       focus;
+    u64          frames;
+    char         message[160];
+} TrophyRoom;
+
+static void trophy_close(TrophyRoom *room)
+{
+    for (size_t i = 0; i < RA_MAX_TROPHIES; i++) {
+        if (room->textures[i]) {
+            scene_free_texture(room->textures[i]);
+            room->textures[i] = 0;
+        }
+    }
+
+    room->open = false;
+    room->trophies.count = 0;
+    room->focus = 0;
+    room->message[0] = '\0';
+}
+
+static void trophy_open(TrophyRoom *room, const Prefs *prefs, char *status,
+                        size_t status_size)
+{
+    trophy_close(room);
+    room->open = true;
+
+    if (!prefs->ra_user[0] || !prefs->ra_key[0]) {
+        snprintf(room->message, sizeof(room->message),
+                 "Set a RetroAchievements user and key in Settings");
+        return;
+    }
+
+    if (!net_init()) {
+        snprintf(room->message, sizeof(room->message), "Network unavailable");
+        return;
+    }
+
+    if (!ra_fetch_recent(prefs->ra_user, prefs->ra_key, TROPHY_WINDOW_MINUTES,
+                         &room->trophies)) {
+        snprintf(room->message, sizeof(room->message),
+                 "Could not reach RetroAchievements");
+        return;
+    }
+
+    if (room->trophies.count == 0) {
+        snprintf(room->message, sizeof(room->message),
+                 "No achievements unlocked in the last 30 days");
+        return;
+    }
+
+    for (size_t i = 0; i < room->trophies.count; i++)
+        if (ra_ensure_badge(room->trophies.items[i].badge, BADGES_DIR)) {
+            char path[512];
+            ra_badge_path(room->trophies.items[i].badge, BADGES_DIR, path,
+                          sizeof(path));
+            room->textures[i] = scene_load_texture(path);
+        }
+
+    diag_logf("trophies: %zu loaded", room->trophies.count);
+    (void)status;
+    (void)status_size;
+}
+
 /* Applet mode cannot fit a core, so refuse up front instead of crashing later. */
 static void run_mode_gate(Render *render, PadState *pad)
 {
@@ -313,6 +387,9 @@ int main(int argc, char **argv)
     CoverPicker picker;
     memset(&picker, 0, sizeof(picker));
 
+    TrophyRoom trophies;
+    memset(&trophies, 0, sizeof(trophies));
+
     /* Surfaced in Settings: a missing core is the usual reason a ROM will not
        start, and it is otherwise invisible until you press A. */
     char core_note[256] = { 0 };
@@ -336,6 +413,57 @@ int main(int argc, char **argv)
 
         if (down & HidNpadButton_Plus)
             break;
+
+        if (trophies.open) {
+            if (down & (HidNpadButton_B | HidNpadButton_Minus)) {
+                trophy_close(&trophies);
+                continue;
+            }
+
+            if (trophies.trophies.count > 0) {
+                if (down & HidNpadButton_AnyLeft)
+                    trophies.focus = trophies.focus ? trophies.focus - 1
+                                                    : trophies.trophies.count - 1;
+                if (down & HidNpadButton_AnyRight)
+                    trophies.focus = (trophies.focus + 1) % trophies.trophies.count;
+
+                u64 held = padGetButtons(&pad);
+                float dzoom = 0.0f;
+                if (held & HidNpadButton_L) dzoom += 0.12f;
+                if (held & HidNpadButton_R) dzoom -= 0.12f;
+                scene_camera_orbit(&camera, 0.0f, 0.0f, dzoom);
+            }
+
+            SDL_Rect viewport = ui_room_begin(&render, &lib.overrides.prefs);
+
+            if (trophies.trophies.count > 0) {
+                /* Slide the camera so the focused medal stays centred. */
+                camera.target[0] = ((float)trophies.focus -
+                                    ((float)trophies.trophies.count - 1.0f) * 0.5f) * 2.8f;
+                scene_draw_medals(scene, &render, &camera, viewport,
+                                  (float)trophies.frames / 60.0f,
+                                  trophies.textures, trophies.trophies.count,
+                                  trophies.focus);
+            }
+
+            const RaTrophy *focused = trophies.trophies.count
+                                          ? &trophies.trophies.items[trophies.focus]
+                                          : NULL;
+            char subtitle[128];
+            if (focused)
+                snprintf(subtitle, sizeof(subtitle), "%zu of %zu   %d points",
+                         trophies.focus + 1, trophies.trophies.count,
+                         focused->points);
+            else
+                subtitle[0] = '\0';
+
+            ui_room_end(&render, &lib.overrides.prefs,
+                        focused ? focused->title : "Trophy Room",
+                        subtitle,
+                        focused ? focused->game : trophies.message);
+            trophies.frames++;
+            continue;
+        }
 
         if (room_open) {
             if (down & (HidNpadButton_B | HidNpadButton_Minus)) {
@@ -530,6 +658,31 @@ int main(int argc, char **argv)
                             fetch_shelf_covers(&lib, shelf_index, &render, &settings,
                                                icons, core_note, status, sizeof(status));
                             break;
+                        case Setting_RaUser: {
+                            char user[sizeof(prefs->ra_user)];
+                            snprintf(user, sizeof(user), "%s", prefs->ra_user);
+                            if (keyboard_prompt("RetroAchievements username", NULL,
+                                                user, user, sizeof(user)))
+                                snprintf(prefs->ra_user, sizeof(prefs->ra_user),
+                                         "%s", user);
+                            break;
+                        }
+                        case Setting_RaKey: {
+                            char key[sizeof(prefs->ra_key)];
+                            snprintf(key, sizeof(key), "%s", prefs->ra_key);
+                            if (keyboard_prompt("RetroAchievements web API key",
+                                                "retroachievements.org/controlpanel.php",
+                                                key, key, sizeof(key)))
+                                snprintf(prefs->ra_key, sizeof(prefs->ra_key),
+                                         "%s", key);
+                            break;
+                        }
+                        case Setting_TrophyRoom:
+                            settings.open = false;
+                            trophy_open(&trophies, prefs, status, sizeof(status));
+                            scene_camera_reset(&camera);
+                            camera.distance = 7.5f;
+                            break;
                         case Setting_UnhideAll:
                             overrides_unhide_all(&lib.overrides);
                             library_regroup(&lib);
@@ -665,6 +818,7 @@ int main(int argc, char **argv)
 
 done:
     picker_close(&picker);
+    trophy_close(&trophies);
     rooms_free(&rooms);
     scene_destroy(scene);
 

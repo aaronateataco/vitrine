@@ -29,10 +29,13 @@ typedef enum {
     Setting_ShowHidden  = 3,
     Setting_SgdbKey     = 4,
     Setting_FetchCovers = 5,
-    Setting_Rescan      = 6,
-    Setting_UnhideAll   = 7,
-    Setting_Diagnostics = 8,
-    Setting_Fixed       = 9,
+    Setting_RaUser      = 6,
+    Setting_RaKey       = 7,
+    Setting_TrophyRoom  = 8,
+    Setting_Rescan      = 9,
+    Setting_UnhideAll   = 10,
+    Setting_Diagnostics = 11,
+    Setting_Fixed       = 12,
 } SettingRow;
 
 typedef struct {

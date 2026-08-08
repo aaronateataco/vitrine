@@ -458,6 +458,9 @@ void ui_draw_settings(Render *render, const Settings *settings, const Prefs *pre
         } else if (i == Setting_SgdbKey) {
             render_text(render, render->font, x, y, g_theme->accent, "Covers");
             y += 28;
+        } else if (i == Setting_RaUser) {
+            render_text(render, render->font, x, y, g_theme->accent, "Achievements");
+            y += 28;
         } else if (i == Setting_ShowHidden) {
             render_text(render, render->font, x, y, g_theme->accent, "Library");
             y += 28;
@@ -489,6 +492,17 @@ void ui_draw_settings(Render *render, const Settings *settings, const Prefs *pre
                 break;
             case Setting_FetchCovers:
                 label = "Download covers for this shelf";
+                break;
+            case Setting_RaUser:
+                label = "RetroAchievements user";
+                value = prefs->ra_user[0] ? prefs->ra_user : "Not set";
+                break;
+            case Setting_RaKey:
+                label = "RetroAchievements key";
+                value = prefs->ra_key[0] ? "Set" : "Not set";
+                break;
+            case Setting_TrophyRoom:
+                label = "Open Trophy Room";
                 break;
             case Setting_Rescan:
                 label = "Rescan library";

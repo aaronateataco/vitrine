@@ -23,6 +23,8 @@ typedef struct {
     int  cover_size;     ///< 0 standard, 1 large, 2 extra large.
     int  theme;          ///< Index into the UI theme table.
     char sgdb_key[128];  ///< SteamGridDB API key, entered via the system keyboard.
+    char ra_user[64];    ///< RetroAchievements username.
+    char ra_key[128];    ///< RetroAchievements web API key.
 } Prefs;
 
 typedef struct {

@@ -243,6 +243,20 @@ file carries camera coordinates and a **link**, and `model` points at a file **y
 on your SD card. Model loading itself is the next step; the framing, attribution and
 lookup are already in.
 
+## Trophy Room
+
+**Settings → Open Trophy Room** renders your recent RetroAchievements unlocks as 3D
+medals: the achievement badge is mapped onto both faces of a coin, with a metal rim and a
+procedurally woven ribbon above it. Left/right moves between medals, L/R zooms, B exits.
+
+Needs your RetroAchievements username and **web API key** (from
+`retroachievements.org/controlpanel.php`), both set in Settings via the system keyboard.
+Badges are cached under `sdmc:/switch/vitrine/badges/`.
+
+Lighting is metallic-looking Blinn-Phong with a specular term, not true PBR — there is no
+environment map to sample on a console launcher, and one would not buy much at this size.
+A medal whose badge failed to download still renders as a plain metal coin.
+
 ## Building
 
 ### With a container (recommended on Fedora and any non-Debian distro)

@@ -232,6 +232,16 @@ Result overrides_load(OverrideList *overrides, const char *path)
             snprintf(overrides->prefs.sgdb_key, sizeof(overrides->prefs.sgdb_key),
                      "%s", key->valuestring);
 
+        cJSON *ra_user = cJSON_GetObjectItemCaseSensitive(prefs, "retroachievements_user");
+        if (cJSON_IsString(ra_user) && ra_user->valuestring)
+            snprintf(overrides->prefs.ra_user, sizeof(overrides->prefs.ra_user),
+                     "%s", ra_user->valuestring);
+
+        cJSON *ra_key = cJSON_GetObjectItemCaseSensitive(prefs, "retroachievements_key");
+        if (cJSON_IsString(ra_key) && ra_key->valuestring)
+            snprintf(overrides->prefs.ra_key, sizeof(overrides->prefs.ra_key),
+                     "%s", ra_key->valuestring);
+
         cJSON *theme = cJSON_GetObjectItemCaseSensitive(prefs, "theme");
         if (cJSON_IsNumber(theme) && theme->valueint >= 0)
             overrides->prefs.theme = theme->valueint;
@@ -279,6 +289,12 @@ Result overrides_save(OverrideList *overrides, const char *path)
         cJSON_AddNumberToObject(prefs, "cover_size", overrides->prefs.cover_size);
         if (overrides->prefs.sgdb_key[0])
             cJSON_AddStringToObject(prefs, "steamgriddb_key", overrides->prefs.sgdb_key);
+        if (overrides->prefs.ra_user[0])
+            cJSON_AddStringToObject(prefs, "retroachievements_user",
+                                    overrides->prefs.ra_user);
+        if (overrides->prefs.ra_key[0])
+            cJSON_AddStringToObject(prefs, "retroachievements_key",
+                                    overrides->prefs.ra_key);
         cJSON_AddNumberToObject(prefs, "theme", overrides->prefs.theme);
     }
 
