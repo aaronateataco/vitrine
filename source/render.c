@@ -215,6 +215,28 @@ void render_text_fit(Render *render, TTF_Font *font, int x, int y, int width,
     SDL_RenderCopy(render->renderer, slot->texture, &src, &dst);
 }
 
+void render_text_measure(Render *render, TTF_Font *font, const char *text,
+                         int *width, int *height)
+{
+    if (width)  *width = 0;
+    if (height) *height = 0;
+
+    TextEntry *slot = text_entry(render, font, text);
+    if (!slot)
+        return;
+
+    if (width)  *width = slot->w;
+    if (height) *height = slot->h;
+}
+
+void render_text_right(Render *render, TTF_Font *font, int right, int y,
+                       SDL_Color color, const char *text)
+{
+    int width = 0;
+    render_text_measure(render, font, text, &width, NULL);
+    render_text(render, font, right - width, y, color, text);
+}
+
 void render_fill(Render *render, SDL_Rect rect, SDL_Color color)
 {
     SDL_SetRenderDrawColor(render->renderer, color.r, color.g, color.b, color.a);

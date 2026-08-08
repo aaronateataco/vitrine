@@ -29,6 +29,14 @@ void render_text(Render *render, TTF_Font *font, int x, int y,
 void render_text_fit(Render *render, TTF_Font *font, int x, int y, int width,
                      SDL_Color color, const char *text);
 
+/// Measures without drawing, so callers can right-align or wrap.
+void render_text_measure(Render *render, TTF_Font *font, const char *text,
+                         int *width, int *height);
+
+/// Draws with the text's right edge at `right`, keeping it on screen.
+void render_text_right(Render *render, TTF_Font *font, int right, int y,
+                       SDL_Color color, const char *text);
+
 void render_fill(Render *render, SDL_Rect rect, SDL_Color color);
 void render_outline(Render *render, SDL_Rect rect, int thickness, SDL_Color color);
 

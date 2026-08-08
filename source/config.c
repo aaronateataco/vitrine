@@ -105,8 +105,14 @@ Result systems_load(SystemList *systems, const char *path)
         char *key = trim(text);
         char *value = trim(equals + 1);
 
-        if (strcasecmp(key, "core") == 0)
-            copy_str(current->core, sizeof(current->core), value);
+        if (strcasecmp(key, "core") == 0) {
+            /* Repeatable, in preference order. */
+            if (*value && current->core_count < SYSTEM_MAX_CORES) {
+                copy_str(current->core[current->core_count],
+                         sizeof(current->core[0]), value);
+                current->core_count++;
+            }
+        }
         else if (strcasecmp(key, "roms") == 0) {
             /* Repeatable: one line per directory, so a system can pull from
                several libraries (e.g. both this app's layout and tico's). */
@@ -137,7 +143,9 @@ Result systems_write_example(const char *path)
           "# One section per platform. VITRINE ships no cores and no ROMs - point\n"
           "# 'core' at a core NRO you built yourself, and 'roms' at your own dumps.\n"
           "#\n"
-          "#   core        path to the core NRO\n"
+          "#   core        path to a core NRO. Repeat it: the first that exists\n"
+          "#               is used, so VITRINE prefers its own build and only\n"
+          "#               falls back to a tico install.\n"
           "#   roms        directory to scan, searched recursively.\n"
           "#               Repeat the key to scan several libraries.\n"
           "#   extensions  comma-separated, no dots\n"
@@ -150,30 +158,35 @@ Result systems_write_example(const char *path)
           "# repository for all twenty systems.\n"
           "\n"
           "[Nintendo Entertainment System]\n"
+          "core = sdmc:/switch/vitrine/cores/tico-fceumm.nro\n"
           "core = sdmc:/tico/cores/tico-fceumm.nro\n"
           "roms = sdmc:/roms/nes\n"
           "roms = sdmc:/tico/roms/nes\n"
           "extensions = nes, fds, unf, unif\n"
           "\n"
           "[Super Nintendo]\n"
+          "core = sdmc:/switch/vitrine/cores/tico-snes9x.nro\n"
           "core = sdmc:/tico/cores/tico-snes9x.nro\n"
           "roms = sdmc:/roms/snes\n"
           "roms = sdmc:/tico/roms/snes\n"
           "extensions = smc, sfc, fig, swc\n"
           "\n"
           "[Game Boy Advance]\n"
+          "core = sdmc:/switch/vitrine/cores/tico-mgba.nro\n"
           "core = sdmc:/tico/cores/tico-mgba.nro\n"
           "roms = sdmc:/roms/gba\n"
           "roms = sdmc:/tico/roms/gba\n"
           "extensions = gba, agb\n"
           "\n"
           "[Nintendo 64]\n"
+          "core = sdmc:/switch/vitrine/cores/tico-mupen64plus.nro\n"
           "core = sdmc:/tico/cores/tico-mupen64plus.nro\n"
           "roms = sdmc:/roms/n64\n"
           "roms = sdmc:/tico/roms/n64\n"
           "extensions = n64, z64, v64\n"
           "\n"
           "[PlayStation]\n"
+          "core = sdmc:/switch/vitrine/cores/tico-duckstation.nro\n"
           "core = sdmc:/tico/cores/tico-duckstation.nro\n"
           "roms = sdmc:/roms/psx\n"
           "roms = sdmc:/tico/roms/psx\n"
@@ -215,7 +228,20 @@ bool system_matches(const System *system, const char *filename)
     return false;
 }
 
-bool system_expand_args(const System *system, const char *rom, char *out, size_t out_size)
+const char *system_pick_core(const System *system)
+{
+    for (size_t i = 0; i < system->core_count; i++) {
+        FILE *probe = fopen(system->core[i], "rb");
+        if (probe) {
+            fclose(probe);
+            return system->core[i];
+        }
+    }
+    return NULL;
+}
+
+bool system_expand_args(const System *system, const char *core, const char *rom,
+                        char *out, size_t out_size)
 {
     size_t written = 0;
     const char *cursor = system->args;
@@ -225,7 +251,7 @@ bool system_expand_args(const System *system, const char *rom, char *out, size_t
         size_t token_len = 0;
 
         if (strncmp(cursor, "{core}", 6) == 0) {
-            substitution = system->core;
+            substitution = core;
             token_len = 6;
         } else if (strncmp(cursor, "{rom}", 5) == 0) {
             substitution = rom;

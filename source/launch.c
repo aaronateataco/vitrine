@@ -79,17 +79,20 @@ static Result launch_game(const Entry *entry, const SystemList *systems)
         return MAKERESULT(Module_Libnx, LibnxError_NotFound);
 
     const System *system = &systems->items[entry->system_index];
-    if (system->core[0] == '\0')
+
+    /* Preference order, so a locally built core wins over a tico one. */
+    const char *core = system_pick_core(system);
+    if (!core)
         return MAKERESULT(Module_Libnx, LibnxError_NotFound);
 
     if (!launch_can_launch_homebrew())
         return MAKERESULT(Module_Libnx, LibnxError_NotFound);
 
     char argv[SYSTEM_ARGS_LEN + 2 * ENTRY_PATH_LEN];
-    if (!system_expand_args(system, entry->path, argv, sizeof(argv)))
+    if (!system_expand_args(system, core, entry->path, argv, sizeof(argv)))
         return MAKERESULT(Module_Libnx, LibnxError_BadInput);
 
-    return envSetNextLoad(system->core, argv);
+    return envSetNextLoad(core, argv);
 }
 
 Result launch_entry(const Entry *entry, const SystemList *systems)

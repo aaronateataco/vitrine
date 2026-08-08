@@ -43,7 +43,11 @@ asserts the output is a well-formed NRO. Visual layout is the part CI cannot che
 | ZL | Move homebrew into Installed Games (and back) |
 | ZR | Show hidden items, so they can be unhidden |
 | Y | Rescan |
+| - | Settings |
 | + | Exit |
+
+The footer shows only **A play** and **- settings**; the full reference lives in the
+Settings overlay, because ten bindings do not fit along a 720p footer.
 
 ## How the library is organised
 
@@ -64,6 +68,7 @@ Two files under `sdmc:/switch/vitrine/`, both created on first run.
 
 ```ini
 [Game Boy Advance]
+core = sdmc:/switch/vitrine/cores/tico-mgba.nro
 core = sdmc:/tico/cores/tico-mgba.nro
 roms = sdmc:/roms/gba
 roms = sdmc:/tico/roms/gba
@@ -71,8 +76,8 @@ extensions = gba, agb
 args = "{core}" "{rom}"
 ```
 
-`roms` is repeatable (up to six directories), so an existing **tico** library is picked up
-in place. Missing directories are skipped silently. `args` defaults to `"{core}" "{rom}"`;
+`core` and `roms` are both repeatable — cores in preference order, ROM directories all
+scanned — so an existing **tico** library is picked up in place without depending on it. Missing directories are skipped silently. `args` defaults to `"{core}" "{rom}"`;
 set it per system if a core wants a different command line. Press **Y** to reload.
 
 `examples/systems-tico.ini` covers all twenty systems a stock tico install provides.
@@ -94,11 +99,27 @@ Homebrew and ROMs are keyed by path; installed titles by application id, since t
 storage path is an implementation detail. Entries back at their defaults are dropped, so
 the file only ever records what you actually changed.
 
-## Cores
+## Cores, and not depending on tico
 
-VITRINE bundles no cores. A stock tico install already ships them prebuilt as standalone
-NROs in `/tico/cores/`, and VITRINE points at those directly. To build your own,
-`tools/fetch-cores.sh` clones and builds from the public `ticohq/tico-*` forks:
+VITRINE bundles no cores. `core` is **repeatable, in preference order** — the first
+candidate that exists on disk is used:
+
+```ini
+core = sdmc:/switch/vitrine/cores/tico-mgba.nro   # your own build, preferred
+core = sdmc:/tico/cores/tico-mgba.nro             # a tico install, fallback
+```
+
+This is what keeps VITRINE independent. It reads tico's ROM folders and can borrow its
+cores, but needs neither.
+
+**Why exiting a game returns you to tico:** tico's core NROs appear to chain-load back to
+`tico.nro` when they exit, so borrowing them inherits that behaviour. Building your own
+cores with `tools/fetch-cores.sh` and putting them in
+`sdmc:/switch/vitrine/cores/` returns you to VITRINE instead. Nothing in VITRINE can
+override where somebody else's binary decides to go next.
+
+To build your own, `tools/fetch-cores.sh` clones and builds from the public
+`ticohq/tico-*` forks:
 
 ```sh
 ./tools/fetch-cores.sh --list       # cores and their licenses
@@ -171,7 +192,7 @@ source/
   launch.h/.c     all launch paths, with applet-type gating
   render.h/.c     SDL2, system font, text cache
   icons.h/.c      lazy icon decoding and texture cache
-  ui.h/.c         shelves, footer, mode gate
+  ui.h/.c         shelves, footer, settings overlay, mode gate
   main.c          input handling and main loop
   vendor/         cJSON (MIT), vendored
 ```

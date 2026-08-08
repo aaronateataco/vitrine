@@ -79,6 +79,12 @@ typedef struct { u64 buttons_cur; u64 buttons_down; } PadState;
 #define HidNpadStyleSet_NpadStandard 0xFU
 
 #define HidNpadButton_A        (1UL << 0)
+#define HidNpadButton_B        (1UL << 1)
+#define HidNpadButton_L        (1UL << 6)
+#define HidNpadButton_R        (1UL << 7)
+#define HidNpadButton_ZL       (1UL << 8)
+#define HidNpadButton_ZR       (1UL << 9)
+#define HidNpadButton_Minus    (1UL << 11)
 #define HidNpadButton_X        (1UL << 2)
 #define HidNpadButton_Y        (1UL << 3)
 #define HidNpadButton_Plus     (1UL << 10)

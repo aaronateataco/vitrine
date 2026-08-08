@@ -71,7 +71,8 @@ int main(void)
     const System *n64 = &systems.items[1];
 
     check("section name parsed", strcmp(gba->name, "Game Boy Advance") == 0);
-    check("value whitespace trimmed", strcmp(gba->core, "/cores/mgba.nro") == 0);
+    check("value whitespace trimmed", strcmp(gba->core[0], "/cores/mgba.nro") == 0);
+    check("single core candidate", gba->core_count == 1);
     check("repeated roms keys accumulate", gba->roms_count == 3);
     check("single roms key", n64->roms_count == 1);
     check("default args when omitted", strcmp(gba->args, "\"{core}\" \"{rom}\"") == 0);
@@ -89,12 +90,38 @@ int main(void)
 
     char out[512];
     check("args expand both tokens",
-          system_expand_args(n64, "/roms/n64/Mario.z64", out, sizeof(out)) &&
+          system_expand_args(n64, n64->core[0], "/roms/n64/Mario.z64", out, sizeof(out)) &&
           strcmp(out, "-L \"/cores/mupen.nro\" --rom \"/roms/n64/Mario.z64\"") == 0);
 
     char tiny[8];
     check("args expansion refuses to overflow",
-          !system_expand_args(n64, "/roms/n64/Mario.z64", tiny, sizeof(tiny)));
+          !system_expand_args(n64, n64->core[0], "/roms/n64/Mario.z64", tiny, sizeof(tiny)));
+
+    /* Core preference: first candidate that exists on disk wins. */
+    {
+        SystemList pref;
+        FILE *pf = fopen(TEST_DIR "/pref.ini", "w");
+        if (!pf) return 1;
+        fputs("[Pref]\n"
+              "core = " TEST_DIR "/roms/missing-core.nro\n"
+              "core = " TEST_DIR "/roms/gba/Zelda.gba\n"
+              "roms = " TEST_DIR "/roms/gba\n"
+              "extensions = gba\n", pf);
+        fclose(pf);
+
+        if (!systems_init(&pref)) return 1;
+        systems_load(&pref, TEST_DIR "/pref.ini");
+        check("core candidates accumulate", pref.items[0].core_count == 2);
+
+        const char *picked = system_pick_core(&pref.items[0]);
+        check("absent core candidate skipped",
+              picked && strstr(picked, "Zelda.gba") != NULL);
+
+        /* None present at all must be reported, not guessed at. */
+        pref.items[0].core_count = 1;
+        check("no usable core returns NULL", system_pick_core(&pref.items[0]) == NULL);
+        systems_free(&pref);
+    }
 
     EntryList list;
     if (!entry_list_init(&list)) return 1;

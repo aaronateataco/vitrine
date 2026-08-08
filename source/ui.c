@@ -225,11 +225,87 @@ static void draw_footer(Render *render, const EntryList *list,
 
     render_text(render, render->font, MARGIN_X, y + 42, COL_DIM, line);
 
-    render_text(render, render->font, SCREEN_W - 560, y + 42, COL_FAINT,
-                "A play   X hide   ZL retag   ZR show hidden   Y rescan   + exit");
+    render_text_right(render, render->font, SCREEN_W - MARGIN_X, y + 42, COL_FAINT,
+                      "A  play        -  settings");
 
     if (status && status[0])
         render_text(render, render->font, MARGIN_X, y + 70, COL_WARN, status);
+}
+
+void ui_draw_settings(Render *render, const Settings *settings, bool show_hidden,
+                      const char *core_note)
+{
+    static const char *controls[][2] = {
+        { "D-pad left / right", "Move within a shelf" },
+        { "D-pad up / down",    "Change shelf" },
+        { "L / R",              "Page within a shelf" },
+        { "A",                  "Launch" },
+        { "X",                  "Hide or unhide" },
+        { "ZL",                 "Move homebrew to Installed Games" },
+        { "ZR",                 "Reveal hidden items" },
+        { "Y",                  "Rescan library" },
+        { "-",                  "Settings" },
+        { "+",                  "Exit" },
+    };
+
+    const int panel_w = 760;
+    const int panel_x = (SCREEN_W - panel_w) / 2;
+
+    /* Dim the library rather than hiding it, so context is kept. */
+    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H },
+                (SDL_Color){ 8, 9, 12, 205 });
+    render_fill(render, (SDL_Rect){ panel_x, 40, panel_w, SCREEN_H - 80 }, COL_PANEL);
+    render_outline(render, (SDL_Rect){ panel_x, 40, panel_w, SCREEN_H - 80 }, 2,
+                   (SDL_Color){ 52, 58, 74, 255 });
+
+    const int x = panel_x + 36;
+    render_text(render, render->font_large, x, 64, COL_TEXT, "Settings");
+
+    struct { const char *label; const char *value; } rows[Setting_Count] = {
+        { "Show hidden items", show_hidden ? "On" : "Off" },
+        { "Rescan library",    "" },
+    };
+
+    int y = 124;
+    for (size_t i = 0; i < Setting_Count; i++) {
+        bool active = (i == settings->row);
+
+        if (active)
+            render_fill(render, (SDL_Rect){ x - 14, y - 6, panel_w - 44, 38 },
+                        (SDL_Color){ 38, 46, 62, 255 });
+
+        render_text(render, render->font, x, y, active ? COL_TEXT : COL_DIM,
+                    rows[i].label);
+
+        if (rows[i].value[0])
+            render_text_right(render, render->font, panel_x + panel_w - 36, y,
+                              active ? COL_ACCENT : COL_DIM, rows[i].value);
+        y += 44;
+    }
+
+    y += 14;
+    render_fill(render, (SDL_Rect){ x - 14, y, panel_w - 44, 1 },
+                (SDL_Color){ 52, 58, 74, 255 });
+    y += 20;
+
+    render_text(render, render->font, x, y, COL_DIM, "Controls");
+    y += 36;
+
+    for (size_t i = 0; i < sizeof(controls) / sizeof(controls[0]); i++) {
+        render_text(render, render->font, x, y, COL_ACCENT, controls[i][0]);
+        render_text(render, render->font, x + 210, y, COL_FAINT, controls[i][1]);
+        y += 30;
+    }
+
+    if (core_note && core_note[0]) {
+        y += 10;
+        render_text(render, render->font, x, y, COL_WARN, core_note);
+    }
+
+    render_text_right(render, render->font, panel_x + panel_w - 36, SCREEN_H - 84,
+                      COL_FAINT, "A  toggle        -  close");
+
+    SDL_RenderPresent(render->renderer);
 }
 
 void ui_draw_mode_gate(Render *render)
@@ -289,8 +365,8 @@ void ui_draw(Render *render, IconCache *icons, const EntryList *list,
     draw_header(render, list, shelves);
 
     if (show_hidden)
-        render_text(render, render->font, SCREEN_W - 200, 30, COL_WARN,
-                    "showing hidden");
+        render_text_right(render, render->font, SCREEN_W - MARGIN_X, 30, COL_WARN,
+                          "showing hidden");
 
     draw_footer(render, list, shelves, shelf_index, status);
 

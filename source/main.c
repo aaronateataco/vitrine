@@ -130,6 +130,20 @@ int main(int argc, char **argv)
     UiState ui;
     ui_state_init(&ui);
 
+    Settings settings = { false, 0 };
+
+    /* Surfaced in Settings: a missing core is the usual reason a ROM will not
+       start, and it is otherwise invisible until you press A. */
+    char core_note[256] = { 0 };
+    for (size_t i = 0; i < lib.systems.count; i++) {
+        if (lib.systems.items[i].core_count && !system_pick_core(&lib.systems.items[i])) {
+            snprintf(core_note, sizeof(core_note),
+                     "No core found for %s - check systems.ini",
+                     lib.systems.items[i].name);
+            break;
+        }
+    }
+
     while (appletMainLoop()) {
         SDL_Event event;
         while (SDL_PollEvent(&event))
@@ -141,6 +155,35 @@ int main(int argc, char **argv)
 
         if (down & HidNpadButton_Plus)
             break;
+
+        if (settings.open) {
+            if (down & (HidNpadButton_Minus | HidNpadButton_B)) {
+                settings.open = false;
+            } else if (down & HidNpadButton_AnyUp) {
+                settings.row = settings.row ? settings.row - 1 : Setting_Count - 1;
+            } else if (down & HidNpadButton_AnyDown) {
+                settings.row = (settings.row + 1) % Setting_Count;
+            } else if (down & HidNpadButton_A) {
+                if (settings.row == Setting_ShowHidden) {
+                    lib.show_hidden = !lib.show_hidden;
+                    library_regroup(&lib);
+                } else {
+                    rescan(&lib, status, sizeof(status));
+                }
+                if (shelf_index >= lib.shelves.count)
+                    shelf_index = lib.shelves.count ? lib.shelves.count - 1 : 0;
+                ui_state_bump(&ui);
+            }
+
+            ui_draw_settings(&render, &settings, lib.show_hidden, core_note);
+            continue;
+        }
+
+        if (down & HidNpadButton_Minus) {
+            settings.open = true;
+            settings.row = 0;
+            continue;
+        }
 
         if (lib.shelves.count > 0) {
             Shelf *shelf = &lib.shelves.items[shelf_index];

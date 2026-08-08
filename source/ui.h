@@ -11,6 +11,22 @@ typedef struct {
     float pulse;      ///< 0..1, restarts on selection change.
 } UiState;
 
+/* Settings overlay. Also carries the full control reference, which does not
+   fit along the footer at 720p. */
+typedef enum {
+    Setting_ShowHidden = 0,
+    Setting_Rescan     = 1,
+    Setting_Count      = 2,
+} SettingRow;
+
+typedef struct {
+    bool   open;
+    size_t row;
+} Settings;
+
+void ui_draw_settings(Render *render, const Settings *settings, bool show_hidden,
+                      const char *core_note);
+
 void ui_state_init(UiState *state);
 
 /// Call whenever the selection moves, so the cursor animation restarts.
