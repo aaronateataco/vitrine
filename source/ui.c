@@ -30,12 +30,13 @@ static const Theme THEMES[] = {
       {  52,  58,  74, 255 }, { 240, 242, 246, 255 }, { 138, 144, 160, 255 },
       {  74,  80,  96, 255 }, {  90, 169, 255, 255 }, { 236, 130, 130, 255 } },
 
-    /* Switch 2 ships only Basic Dark and Basic Light - monochrome, no accent
-       hue - so these deliberately use white/black rather than Nintendo red. */
+    /* Sampled from a real Switch 2 HOME menu screenshot: the background is a
+       charcoal grey rather than black, and the selected title is cyan - the
+       menu is not monochrome, whatever the theme picker offers. */
     { "Switch 2 Dark",
-      {  15,  15,  15, 255 }, {  38,  38,  38, 255 }, {  64,  64,  64, 255 },
-      {  82,  82,  82, 255 }, { 255, 255, 255, 255 }, { 168, 168, 168, 255 },
-      { 112, 112, 112, 255 }, { 255, 255, 255, 255 }, { 240, 140, 140, 255 } },
+      {  38,  38,  38, 255 }, {  58,  58,  58, 255 }, {  74,  74,  74, 255 },
+      {  92,  92,  92, 255 }, { 255, 255, 255, 255 }, { 176, 176, 176, 255 },
+      { 124, 124, 124, 255 }, {  79, 195, 247, 255 }, { 240, 140, 140, 255 } },
 
     { "Switch 2 Light",
       { 235, 235, 235, 255 }, { 255, 255, 255, 255 }, { 214, 214, 214, 255 },
@@ -648,40 +649,51 @@ void ui_draw_mode_gate(Render *render)
 
 /* ---- Console layout ------------------------------------------------------
  *
- * Modelled on the Switch 2 HOME menu: an avatar mark top-left, a horizontal
- * carousel of games through the middle, and a slim dock beneath. The console's
- * dock holds system apps; here it holds platforms, which is the closest useful
- * equivalent and keeps a multi-platform library reachable from a single row.
+ * Proportions measured from a 1920x1080 Switch 2 HOME menu screenshot and
+ * divided by 1.5 into this file's 1280x720 design space:
  *
- * Proportions are estimated from written descriptions, not measured from the
- * real interface - this reads as the same shape, not as a pixel replica.
+ *   avatars   d=72  y=75   pitch=112     ->  48 / 50 / 75
+ *   title     x=270 y=253  cyan, ABOVE the row
+ *   icons     400px, first at x=152, pitch=416, y=293
+ *   dock      pill x 345..1578, y 772..908
+ *   hints     y~1020, bottom-right
+ *
+ * The selection sits at a fixed left position and the row slides underneath it,
+ * which is what the console does - centring the cursor instead would put the
+ * first game in the middle of an empty screen.
  */
 
-#define CON_ICON       176
-#define CON_GAP         28
-#define CON_ROW_Y      148
-#define CON_TITLE_Y    404
-#define CON_DOCK_Y     536
-#define CON_DOCK_H      52
-#define CON_HINT_Y     650
-#define CON_SELECT     1.18f
+#define CON_AVATAR      48
+#define CON_AVATAR_Y    50
+#define CON_AVATAR_X    52
+#define CON_AVATAR_PITCH 75
+#define CON_STATUS_Y    64
+#define CON_TITLE_Y    155
+#define CON_ROW_Y      195
+#define CON_ICON       267
+#define CON_PITCH      277
+#define CON_LEFT       101
+#define CON_DOCK_X     230
+#define CON_DOCK_Y     515
+#define CON_DOCK_W     822
+#define CON_DOCK_H      90
+#define CON_DOCK_PAD    14
+#define CON_HINT_Y     672
+#define CON_SELECT    1.05f
 
 static void draw_console_tile(Render *render, IconCache *icons, const Entry *entry,
-                              size_t entry_index, int centre_x, bool selected,
-                              float pulse, bool hidden, const Prefs *prefs)
+                              size_t entry_index, int x, bool selected, float pulse,
+                              bool hidden, const Prefs *prefs)
 {
     int size = CON_ICON;
     if (selected)
         size = (int)(CON_ICON * (1.0f + (CON_SELECT - 1.0f) * pulse));
 
-    SDL_Rect rect = {
-        centre_x - size / 2,
-        CON_ROW_Y + (CON_ICON - size) / 2 + 40,
-        size, size
-    };
+    SDL_Rect rect = { x - (size - CON_ICON) / 2,
+                      CON_ROW_Y - (size - CON_ICON) / 2, size, size };
 
     if (selected)
-        render_shadow(render, rect, 12);
+        render_shadow(render, rect, 14);
 
     SDL_Texture *texture = icons_get(icons, entry, entry_index, prefs->poster_tiles);
 
@@ -698,58 +710,97 @@ static void draw_console_tile(Render *render, IconCache *icons, const Entry *ent
         SDL_Color veil = g_theme->bg;
         veil.a = 170;
         render_fill(render, rect, veil);
-        render_text_fit(render, render->font, rect.x, rect.y + 8, size,
+        render_text_fit(render, render->font, rect.x, rect.y + 10, size,
                         g_theme->warn, "hidden");
     }
 
-    render_round_corners(render, rect, size / 8, g_theme->bg);
+    /* Measured at roughly 12% of the icon's size. */
+    render_round_corners(render, rect, size * 12 / 100, g_theme->bg);
 
-    if (selected) {
-        render_outline(render, rect, 3, g_theme->accent);
-    } else {
-        SDL_Color veil = g_theme->bg;
-        veil.a = 120;
-        render_fill(render, rect, veil);
-    }
+    if (selected)
+        render_outline(render, rect, 4, g_theme->accent);
 }
 
-/* The dock stands in for the console's system-app row, listing platforms. */
+/*
+ * The console's dock holds system apps. A launcher has no equivalent, so this
+ * one holds platforms - the same pill, doing the job that actually matters
+ * here, which is reaching the rest of a multi-platform library.
+ */
 static void draw_console_dock(Render *render, const ShelfList *shelves,
                               size_t shelf_index)
 {
-    int total = 0;
-    int widths[64];
-    size_t shown = shelves->count < 64 ? shelves->count : 64;
+    SDL_Rect pill = { CON_DOCK_X, CON_DOCK_Y, CON_DOCK_W, CON_DOCK_H };
+    SDL_Color body = g_theme->panel;
+    body.a = 235;
 
-    for (size_t i = 0; i < shown; i++) {
-        int w = 0;
-        render_text_measure(render, render->font, shelves->items[i].name, &w, NULL);
-        widths[i] = w + 34;
-        total += widths[i] + 10;
-    }
+    render_fill(render, pill, body);
+    render_round_corners(render, pill, CON_DOCK_H / 2, g_theme->bg);
 
-    if (total > 0)
-        total -= 10;
+    if (shelves->count == 0)
+        return;
 
-    int x = (SCREEN_W - total) / 2;
-    if (x < MARGIN_X)
-        x = MARGIN_X;
+    /* Fit whatever is there into the pill rather than overflowing it. */
+    int usable = CON_DOCK_W - 2 * CON_DOCK_PAD;
+    int slot = usable / (int)shelves->count;
+    if (slot < 40)
+        slot = 40;
 
-    for (size_t i = 0; i < shown; i++) {
+    int x = CON_DOCK_X + CON_DOCK_PAD;
+
+    for (size_t i = 0; i < shelves->count; i++) {
+        if (x + slot > CON_DOCK_X + CON_DOCK_W - CON_DOCK_PAD)
+            break;
+
         bool active = (i == shelf_index);
-        SDL_Rect chip = { x, CON_DOCK_Y, widths[i], CON_DOCK_H };
 
-        render_fill(render, chip, active ? g_theme->raised : g_theme->panel);
-        render_round_corners(render, chip, CON_DOCK_H / 3, g_theme->bg);
+        if (active) {
+            SDL_Rect chip = { x + 2, CON_DOCK_Y + 10, slot - 4, CON_DOCK_H - 20 };
+            render_fill(render, chip, g_theme->raised);
+            render_round_corners(render, chip, (CON_DOCK_H - 20) / 2, g_theme->panel);
+        }
 
-        if (active)
-            render_outline(render, chip, 2, g_theme->accent);
-
-        render_text_fit(render, render->font, chip.x, chip.y + 14, chip.w,
-                        active ? g_theme->text : g_theme->dim,
+        render_text_fit(render, render->font, x, CON_DOCK_Y + CON_DOCK_H / 2 - 14,
+                        slot, active ? g_theme->accent : g_theme->dim,
                         shelves->items[i].name);
-        x += widths[i] + 10;
+        x += slot;
     }
+}
+
+static void draw_console_chrome(Render *render, const EntryList *list)
+{
+    char line[128];
+
+    /* Avatar row, standing in for the console's user circles. */
+    for (int i = 0; i < 4; i++) {
+        SDL_Rect dot = { CON_AVATAR_X + i * CON_AVATAR_PITCH, CON_AVATAR_Y,
+                         CON_AVATAR, CON_AVATAR };
+        render_fill(render, dot, i == 0 ? g_theme->raised : g_theme->panel);
+        render_round_corners(render, dot, CON_AVATAR / 2, g_theme->bg);
+    }
+
+    render_text_fit(render, render->font, CON_AVATAR_X,
+                    CON_AVATAR_Y + CON_AVATAR / 2 - 14, CON_AVATAR,
+                    g_theme->text, "V");
+
+    char clock[16];
+    int battery = -1;
+    bool charging = false;
+    render_system_status(clock, sizeof(clock), &battery, &charging);
+
+    if (battery >= 0)
+        snprintf(line, sizeof(line), "%s      %d%%%s", clock, battery,
+                 charging ? " +" : "");
+    else
+        snprintf(line, sizeof(line), "%s", clock);
+
+    render_text_right(render, render->font_large, SCREEN_W - CON_AVATAR_X,
+                      CON_STATUS_Y, g_theme->text, line);
+
+    snprintf(line, sizeof(line), "%zu items", list->count);
+    render_text(render, render->font, CON_AVATAR_X, CON_HINT_Y, g_theme->faint, line);
+
+    render_text_right(render, render->font, SCREEN_W - CON_AVATAR_X, CON_HINT_Y,
+                      g_theme->faint, "-  Options        A  Start");
 }
 
 static void draw_console(Render *render, IconCache *icons, const EntryList *list,
@@ -757,87 +808,49 @@ static void draw_console(Render *render, IconCache *icons, const EntryList *list
                          const OverrideList *overrides, const char *status)
 {
     const Prefs *prefs = &overrides->prefs;
-    char line[192];
 
     render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, g_theme->bg);
-
-    /* Avatar mark, standing in for My Page in the console's top-left. */
-    SDL_Rect avatar = { MARGIN_X, 34, 48, 48 };
-    render_fill(render, avatar, g_theme->raised);
-    render_round_corners(render, avatar, 24, g_theme->bg);
-    render_text_fit(render, render->font, avatar.x, avatar.y + 12, avatar.w,
-                    g_theme->text, "V");
-
-    /* Status cluster, as the console shows top-right. */
-    char clock[16];
-    int battery = -1;
-    bool charging = false;
-    render_system_status(clock, sizeof(clock), &battery, &charging);
-
-    if (battery >= 0)
-        snprintf(line, sizeof(line), "%zu items      %s      %d%%%s", list->count,
-                 clock, battery, charging ? " +" : "");
-    else
-        snprintf(line, sizeof(line), "%zu items      %s", list->count, clock);
-
-    render_text_right(render, render->font, SCREEN_W - MARGIN_X, 48, g_theme->faint,
-                      line);
+    draw_console_chrome(render, list);
 
     if (shelves->count == 0) {
-        render_text(render, render->font_large, MARGIN_X, CON_TITLE_Y, g_theme->dim,
+        render_text(render, render->font_large, CON_LEFT, CON_ROW_Y, g_theme->dim,
                     "Nothing found");
         SDL_RenderPresent(render->renderer);
         return;
     }
 
     Shelf *shelf = &shelves->items[shelf_index];
+    const Entry *selected = &list->items[shelf->items[shelf->cursor]];
 
-    /* Centre the cursor; the carousel slides rather than paging. */
-    int pitch = CON_ICON + CON_GAP;
-    float target = (float)shelf->cursor * pitch;
-    shelf->scroll_x = approach(shelf->scroll_x, target, 0.22f);
+    /* Title sits above the row, left-aligned with the selected icon, in accent. */
+    render_text_fit(render, render->font_large, CON_LEFT, CON_TITLE_Y,
+                    SCREEN_W - CON_LEFT * 2, g_theme->accent, selected->name);
 
-    SDL_Rect clip = { 0, CON_ROW_Y, SCREEN_W, CON_ICON + 90 };
+    /* The cursor stays put; the row slides beneath it. */
+    shelf->scroll_x = approach(shelf->scroll_x, (float)shelf->cursor * CON_PITCH,
+                               0.22f);
+
+    SDL_Rect clip = { 0, CON_ROW_Y - 20, SCREEN_W, CON_ICON + 40 };
     SDL_RenderSetClipRect(render->renderer, &clip);
 
     for (size_t i = 0; i < shelf->count; i++) {
-        int centre_x = SCREEN_W / 2 + (int)((float)i * pitch - shelf->scroll_x);
-        if (centre_x < -CON_ICON || centre_x > SCREEN_W + CON_ICON)
+        int x = CON_LEFT + (int)((float)i * CON_PITCH - shelf->scroll_x);
+        if (x + CON_ICON < 0 || x > SCREEN_W)
             continue;
 
         const Entry *entry = &list->items[shelf->items[i]];
         bool hidden = overrides && overrides_hidden(overrides, entry);
-        draw_console_tile(render, icons, entry, shelf->items[i], centre_x,
+        draw_console_tile(render, icons, entry, shelf->items[i], x,
                           i == shelf->cursor, state->pulse, hidden, prefs);
     }
 
     SDL_RenderSetClipRect(render->renderer, NULL);
 
-    const Entry *selected = &list->items[shelf->items[shelf->cursor]];
-    render_text_fit(render, render->font_large, 0, CON_TITLE_Y, SCREEN_W,
-                    g_theme->text, selected->name);
-
-    const char *kind = selected->kind == EntryKind_Homebrew ? "Homebrew"
-                     : selected->kind == EntryKind_Game     ? "ROM"
-                                                            : "Installed";
-    if (selected->author[0])
-        snprintf(line, sizeof(line), "%s   %s   %zu / %zu", selected->author, kind,
-                 shelf->cursor + 1, shelf->count);
-    else
-        snprintf(line, sizeof(line), "%s   %zu / %zu", kind, shelf->cursor + 1,
-                 shelf->count);
-
-    render_text_fit(render, render->font, 0, CON_TITLE_Y + 46, SCREEN_W,
-                    g_theme->dim, line);
-
     draw_console_dock(render, shelves, shelf_index);
 
-    render_text_fit(render, render->font, 0, CON_HINT_Y, SCREEN_W, g_theme->faint,
-                    "A  play        -  settings");
-
     if (status && status[0])
-        render_text_fit(render, render->font, 0, CON_HINT_Y + 30, SCREEN_W,
-                        g_theme->warn, status);
+        render_text(render, render->font, CON_LEFT, CON_HINT_Y - 32, g_theme->warn,
+                    status);
 
     SDL_RenderPresent(render->renderer);
 }
