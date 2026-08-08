@@ -86,22 +86,56 @@ bool render_init(Render *render)
     if (TTF_Init() != 0)
         return false;
 
-    /* 4x MSAA, requested before the window so SDL picks a multisampled config.
-       The 3D rooms are all long straight edges, which alias badly without it. */
-    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
-    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+    /*
+     * Try progressively less demanding configurations. Requesting 4x MSAA
+     * outright previously made window-surface creation fail on hardware, which
+     * killed the app at startup - so nothing here is allowed to be mandatory.
+     */
+    static const struct {
+        int  width;
+        int  height;
+        int  samples;
+        const char *name;
+    } attempts[] = {
+        { 1920, 1080, 4, "1080p + 4x MSAA" },
+        { 1920, 1080, 2, "1080p + 2x MSAA" },
+        { 1920, 1080, 0, "1080p" },
+        { 1280,  720, 0, "720p" },
+    };
 
-    /* Ask for 1080p: docked output is native, and handheld is downscaled by the
-       compositor rather than us drawing a smaller picture. */
-    render->window = SDL_CreateWindow("VITRINE", SDL_WINDOWPOS_CENTERED,
-                                      SDL_WINDOWPOS_CENTERED, 1920, 1080, 0);
-    if (!render->window)
-        return false;
+    for (size_t i = 0; i < sizeof(attempts) / sizeof(attempts[0]); i++) {
+        if (render->window) {
+            SDL_DestroyWindow(render->window);
+            render->window = NULL;
+        }
 
-    render->renderer = SDL_CreateRenderer(render->window, -1,
-                                          SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
-    if (!render->renderer)
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, attempts[i].samples ? 1 : 0);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, attempts[i].samples);
+
+        render->window = SDL_CreateWindow("VITRINE", SDL_WINDOWPOS_CENTERED,
+                                          SDL_WINDOWPOS_CENTERED,
+                                          attempts[i].width, attempts[i].height, 0);
+        if (!render->window) {
+            diag_logf("window %s failed: %s", attempts[i].name, SDL_GetError());
+            continue;
+        }
+
+        render->renderer = SDL_CreateRenderer(render->window, -1,
+                                              SDL_RENDERER_ACCELERATED |
+                                              SDL_RENDERER_PRESENTVSYNC);
+        if (!render->renderer) {
+            diag_logf("renderer %s failed: %s", attempts[i].name, SDL_GetError());
+            continue;
+        }
+
+        diag_logf("video mode: %s", attempts[i].name);
+        break;
+    }
+
+    if (!render->window || !render->renderer) {
+        diag_logf("no usable video mode");
         return false;
+    }
 
     SDL_SetRenderDrawBlendMode(render->renderer, SDL_BLENDMODE_BLEND);
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best");
@@ -113,9 +147,8 @@ bool render_init(Render *render)
     if (render->height <= 0)
         render->height = SCREEN_H;
     render->scale = (float)render->height / (float)SCREEN_H;
-
-    /* Optional: the status bar simply omits the battery if this fails. */
-    g_psm_ready = R_SUCCEEDED(psmInitialize());
+    diag_logf("output %dx%d, scale %.3f", render->width, render->height,
+              (double)render->scale);
 
     if (!load_shared_font(render))
         return false;

@@ -1,0 +1,27 @@
+{
+  "version": 1,
+
+  "_readme": [
+    "One entry per shelf you want a 3D room for.",
+    "match    - shelf name exactly as it appears in the library",
+    "model    - path to a .gltf or .glb ON YOUR OWN SD CARD",
+    "source   - where you got the model; shown as attribution",
+    "credit   - author and licence, shown in the room",
+    "camera   - yaw and pitch in radians, distance, and a target point",
+    "VITRINE downloads no models. Most published models are not",
+    "licensed for redistribution, so supply your own file and keep",
+    "the source link for credit."
+  ],
+
+  "rooms": [
+    {
+      "match": "Game Boy Advance",
+      "title": "GBA Room",
+      "model": "sdmc:/switch/vitrine/models/gba-room.glb",
+      "source": "https://sketchfab.com/3d-models/example",
+      "credit": "Model by Example Author, CC-BY 4.0",
+      "camera": { "yaw": 0.6, "pitch": 0.3, "distance": 6.0,
+                  "target": [0.0, 1.0, 0.0] }
+    }
+  ]
+}

@@ -1,12 +1,4 @@
-[444856.154] VITRINE diagnostics log
-[444856.162] built Aug  8 2026 02:47:10
-[444856.166] applet mode: Application
-[444856.276] render ready
-[444857.059] scan: 102 entries across 4 shelves
-[444857.065] system Nintendo Entertainment System core=sdmc:/tico/cores/tico-fceumm.nro
-[444857.069] system Super Nintendo               core=sdmc:/tico/cores/tico-snes9x.nro
-[444857.074] system Game Boy Advance             core=sdmc:/tico/cores/tico-mgba.nro
-[444857.079] system Nintendo 64                  core=sdmc:/tico/cores/tico-mupen64plus.nro
-[444857.083] system PlayStation                  core=sdmc:/tico/cores/tico-duckstation.nro
-[444868.750] screenshot saved: sdmc:/switch/vitrine/screenshots/vitrine-000.png (1280x720)
-[444868.794] diagnostics report written: sdmc:/switch/vitrine/diagnostics.txt
+[476739.977] VITRINE diagnostics log
+[476739.985] built Aug  8 2026 11:25:34
+[476739.989] applet mode: Application
+[476740.041] render_init FAILED: Could not create GLES window surface

@@ -55,7 +55,11 @@ bool user_select(User *user, SDL_Renderer *renderer)
     PselUserSelectionSettings settings;
     memset(&settings, 0, sizeof(settings));
 
+    /* Bracketed by logs: a library applet is the next most likely thing to
+       take the app down at startup, and the log is how we would find out. */
+    diag_logf("showing user selector");
     rc = pselShowUserSelector(&user->uid, &settings);
+    diag_logf("user selector returned 0x%x", rc);
     if (R_FAILED(rc)) {
         /* Backing out of the picker is a normal choice, not an error. */
         diag_logf("user selection dismissed: 0x%x", rc);

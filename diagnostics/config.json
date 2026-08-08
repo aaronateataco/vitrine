@@ -3,9 +3,14 @@
 	"prefs":	{
 		"show_hidden":	false,
 		"poster_tiles":	false,
-		"large_tiles":	false,
-		"theme":	0
+		"cover_size":	1,
+		"steamgriddb_key":	"11ab5b9ee5df335261ec569e966d46bb",
+		"theme":	1,
+		"layout":	1
 	},
 	"entries":	{
+		"shelf:Homebrew":	{
+			"hidden":	true
+		}
 	}
 }
