@@ -15,6 +15,7 @@
 #include "overrides.h"
 #include "render.h"
 #include "roms.h"
+#include "scene.h"
 #include "shelves.h"
 #include "ui.h"
 
@@ -288,6 +289,15 @@ int main(int argc, char **argv)
     ui_state_init(&ui);
 
     Settings settings = { false, 0 };
+
+    /* 3D is optional: if the context or shaders fail, the room is simply
+       unavailable and the rest of the app carries on. */
+    Scene *scene = scene_create();
+    SceneCamera camera;
+    scene_camera_reset(&camera);
+    bool room_open = false;
+    u64 room_frames = 0;
+
     CoverPicker picker;
     memset(&picker, 0, sizeof(picker));
 
@@ -314,6 +324,51 @@ int main(int argc, char **argv)
 
         if (down & HidNpadButton_Plus)
             break;
+
+        if (room_open) {
+            if (down & (HidNpadButton_B | HidNpadButton_Minus)) {
+                room_open = false;
+                continue;
+            }
+
+            /* Held, not pressed: orbiting wants continuous input. */
+            u64 held = padGetButtons(&pad);
+            float dyaw = 0.0f;
+            float dpitch = 0.0f;
+            float dzoom = 0.0f;
+
+            if (held & HidNpadButton_AnyLeft)  dyaw   -= 0.03f;
+            if (held & HidNpadButton_AnyRight) dyaw   += 0.03f;
+            if (held & HidNpadButton_AnyUp)    dpitch += 0.02f;
+            if (held & HidNpadButton_AnyDown)  dpitch -= 0.02f;
+            if (held & HidNpadButton_L)        dzoom  += 0.12f;
+            if (held & HidNpadButton_R)        dzoom  -= 0.12f;
+
+            scene_camera_orbit(&camera, dyaw, dpitch, dzoom);
+
+            const Shelf *shelf = &lib.shelves.items[shelf_index];
+            char subtitle[96];
+            snprintf(subtitle, sizeof(subtitle), "%zu items", shelf->count);
+
+            SDL_Rect viewport = ui_room_begin(&render, &lib.overrides.prefs);
+            scene_draw(scene, &render, &camera, viewport,
+                       (float)room_frames / 60.0f);
+            ui_room_end(&render, &lib.overrides.prefs, shelf->name, subtitle,
+                        "Placeholder model - franchises.json wiring is next");
+            room_frames++;
+            continue;
+        }
+
+        if ((down & HidNpadButton_B) && lib.shelves.count > 0) {
+            if (!scene) {
+                snprintf(status, sizeof(status), "3D unavailable on this build");
+            } else {
+                room_open = true;
+                room_frames = 0;
+                scene_camera_reset(&camera);
+            }
+            continue;
+        }
 
         if (picker.open) {
             if (down & (HidNpadButton_B | HidNpadButton_Minus)) {
@@ -350,7 +405,52 @@ int main(int argc, char **argv)
                 }
             }
 
-            if (picker.open) {
+            if (room_open) {
+            if (down & (HidNpadButton_B | HidNpadButton_Minus)) {
+                room_open = false;
+                continue;
+            }
+
+            /* Held, not pressed: orbiting wants continuous input. */
+            u64 held = padGetButtons(&pad);
+            float dyaw = 0.0f;
+            float dpitch = 0.0f;
+            float dzoom = 0.0f;
+
+            if (held & HidNpadButton_AnyLeft)  dyaw   -= 0.03f;
+            if (held & HidNpadButton_AnyRight) dyaw   += 0.03f;
+            if (held & HidNpadButton_AnyUp)    dpitch += 0.02f;
+            if (held & HidNpadButton_AnyDown)  dpitch -= 0.02f;
+            if (held & HidNpadButton_L)        dzoom  += 0.12f;
+            if (held & HidNpadButton_R)        dzoom  -= 0.12f;
+
+            scene_camera_orbit(&camera, dyaw, dpitch, dzoom);
+
+            const Shelf *shelf = &lib.shelves.items[shelf_index];
+            char subtitle[96];
+            snprintf(subtitle, sizeof(subtitle), "%zu items", shelf->count);
+
+            SDL_Rect viewport = ui_room_begin(&render, &lib.overrides.prefs);
+            scene_draw(scene, &render, &camera, viewport,
+                       (float)room_frames / 60.0f);
+            ui_room_end(&render, &lib.overrides.prefs, shelf->name, subtitle,
+                        "Placeholder model - franchises.json wiring is next");
+            room_frames++;
+            continue;
+        }
+
+        if ((down & HidNpadButton_B) && lib.shelves.count > 0) {
+            if (!scene) {
+                snprintf(status, sizeof(status), "3D unavailable on this build");
+            } else {
+                room_open = true;
+                room_frames = 0;
+                scene_camera_reset(&camera);
+            }
+            continue;
+        }
+
+        if (picker.open) {
                 picker_preview(&picker, &render);
 
                 const Shelf *shelf = &lib.shelves.items[shelf_index];
@@ -561,6 +661,7 @@ int main(int argc, char **argv)
 
 done:
     picker_close(&picker);
+    scene_destroy(scene);
 
     if (lib.overrides.dirty)
         overrides_save(&lib.overrides, CONFIG_PATH);

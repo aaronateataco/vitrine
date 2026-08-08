@@ -75,3 +75,12 @@ void ui_draw(Render *render, IconCache *icons, const EntryList *list,
  * app refuses to run rather than crashing later.
  */
 void ui_draw_mode_gate(Render *render);
+
+/*
+ * Game Room. Split in two so the 3D pass can sit between them: begin paints the
+ * background and returns the viewport the scene should fill, end lays the 2D
+ * chrome over the top and presents.
+ */
+SDL_Rect ui_room_begin(Render *render, const Prefs *prefs);
+void     ui_room_end(Render *render, const Prefs *prefs, const char *title,
+                     const char *subtitle, const char *source);

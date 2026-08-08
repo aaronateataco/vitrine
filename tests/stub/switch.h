@@ -102,3 +102,4 @@ void padConfigureInput(u32 max_players, u32 style_set);
 void padInitializeDefault(PadState *pad);
 void padUpdate(PadState *pad);
 u64  padGetButtonsDown(const PadState *pad);
+u64  padGetButtons(const PadState *pad);

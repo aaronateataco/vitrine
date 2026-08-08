@@ -45,6 +45,7 @@ asserts the output is a well-formed NRO. Visual layout is the part CI cannot che
 | Y | Rescan |
 | Left stick click | Screenshot |
 | Right stick click | Choose a cover for this game |
+| B | Open the Game Room for this shelf |
 | - | Settings |
 | + | Exit |
 
@@ -206,6 +207,21 @@ MPL-2.0.
 Cores run as **separate NRO processes** via `envSetNextLoad`. Nothing is linked into
 VITRINE, so each core keeps its own license and this frontend stays independent. If you
 redistribute a GPL core NRO you must also offer its complete corresponding source.
+
+## Game Rooms (in progress)
+
+Pressing **B** on a shelf opens a 3D room. The GLES foundation is in: a lit,
+orbitable placeholder solid rendered into the same context SDL already owns, with
+D-pad orbit and L/R zoom.
+
+Model loading is next. `franchises.json` will map a collection to a **local model path
+on your SD card**, the **camera position and zoom** for that room, and the **source URL**
+for attribution.
+
+VITRINE will not re-host 3D models. Most models on sites like Sketchfab are not licensed
+for redistribution, and routing around a download restriction does not change that — so
+the repository carries camera coordinates and a link, and the model file itself is one you
+supply. The room renders the same either way.
 
 ## Building
 

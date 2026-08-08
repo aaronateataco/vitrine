@@ -553,6 +553,39 @@ void ui_draw_settings(Render *render, const Settings *settings, const Prefs *pre
     SDL_RenderPresent(render->renderer);
 }
 
+SDL_Rect ui_room_begin(Render *render, const Prefs *prefs)
+{
+    theme_apply(prefs);
+
+    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, g_theme->bg);
+
+    /* Leaves room for a title above and attribution below. */
+    SDL_Rect viewport = { 0, 96, SCREEN_W, SCREEN_H - 200 };
+    return viewport;
+}
+
+void ui_room_end(Render *render, const Prefs *prefs, const char *title,
+                 const char *subtitle, const char *source)
+{
+    theme_apply(prefs);
+
+    render_text(render, render->font_large, MARGIN_X, 34, g_theme->text, title);
+
+    if (subtitle && subtitle[0])
+        render_text_right(render, render->font, SCREEN_W - MARGIN_X, 46,
+                          g_theme->faint, subtitle);
+
+    /* Attribution for a model the user supplied, when the room names a source. */
+    if (source && source[0])
+        render_text(render, render->font, MARGIN_X, SCREEN_H - 96, g_theme->faint,
+                    source);
+
+    render_text(render, render->font, MARGIN_X, SCREEN_H - 60, g_theme->faint,
+                "Right stick  orbit        L / R  zoom        B  back");
+
+    SDL_RenderPresent(render->renderer);
+}
+
 void ui_draw_mode_gate(Render *render)
 {
     g_theme = &THEMES[0];
