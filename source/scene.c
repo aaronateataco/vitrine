@@ -472,6 +472,7 @@ void scene_draw(Scene *scene, Render *render, const SceneCamera *camera,
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glDisable(GL_BLEND);
+    glEnable(GL_MULTISAMPLE);
     glClearDepthf(1.0f);
     glClear(GL_DEPTH_BUFFER_BIT);
 
@@ -528,6 +529,7 @@ void scene_draw(Scene *scene, Render *render, const SceneCamera *camera,
     glDisableVertexAttribArray((GLuint)scene->a_normal);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glUseProgram(0);
+    glDisable(GL_MULTISAMPLE);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_SCISSOR_TEST);
     glEnable(GL_BLEND);
@@ -773,6 +775,7 @@ void scene_draw_medals(Scene *scene, Render *render, const SceneCamera *camera,
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glDisable(GL_BLEND);
+    glEnable(GL_MULTISAMPLE);
     glClearDepthf(1.0f);
     glClear(GL_DEPTH_BUFFER_BIT);
 
@@ -845,6 +848,7 @@ void scene_draw_medals(Scene *scene, Render *render, const SceneCamera *camera,
     glBindTexture(GL_TEXTURE_2D, 0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glUseProgram(0);
+    glDisable(GL_MULTISAMPLE);
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_SCISSOR_TEST);
     glEnable(GL_BLEND);

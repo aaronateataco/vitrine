@@ -24,6 +24,11 @@ static void copy_nacp_field(char *dst, size_t dst_size, const char *src, size_t 
  */
 Result titles_scan(EntryList *list)
 {
+    return titles_scan_progress(list, NULL, NULL);
+}
+
+Result titles_scan_progress(EntryList *list, ScanProgressFn progress, void *ctx)
+{
     Result rc = nsInitialize();
     if (R_FAILED(rc))
         return rc;
@@ -38,6 +43,25 @@ Result titles_scan(EntryList *list)
     NsApplicationRecord records[RECORD_BATCH];
     s32 offset = 0;
 
+    /*
+     * Pre-count for the progress denominator. Listing records is cheap - the
+     * expensive part is the control-data call per title, which this skips.
+     */
+    s32 total = 0;
+    if (progress) {
+        s32 probe_offset = 0;
+        for (;;) {
+            s32 got = 0;
+            if (R_FAILED(nsListApplicationRecord(records, RECORD_BATCH,
+                                                 probe_offset, &got)) || got <= 0)
+                break;
+            total += got;
+            probe_offset += got;
+            if (got < RECORD_BATCH)
+                break;
+        }
+    }
+
     for (;;) {
         s32 count = 0;
         rc = nsListApplicationRecord(records, RECORD_BATCH, offset, &count);
@@ -45,6 +69,10 @@ Result titles_scan(EntryList *list)
             break;
 
         for (s32 i = 0; i < count; i++) {
+            if (progress)
+                progress(ctx, (size_t)(offset + i),
+                         (size_t)(total > 0 ? total : offset + count));
+
             u64 actual = 0;
 
             /*

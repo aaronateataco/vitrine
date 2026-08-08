@@ -149,7 +149,7 @@ void overrides_toggle_shelf(OverrideList *overrides, const char *shelf_name)
 }
 
 void overrides_set_cover(OverrideList *overrides, const Entry *entry,
-                         const char *url)
+                         bool poster, const char *url)
 {
     char key[ENTRY_PATH_LEN];
     overrides_key(entry, key, sizeof(key));
@@ -158,17 +158,22 @@ void overrides_set_cover(OverrideList *overrides, const Entry *entry,
     if (!slot)
         return;
 
-    snprintf(slot->cover_url, sizeof(slot->cover_url), "%s", url ? url : "");
+    char *field = poster ? slot->cover_poster : slot->cover_icon;
+    snprintf(field, sizeof(slot->cover_icon), "%s", url ? url : "");
     overrides->dirty = true;
 }
 
-const char *overrides_cover(const OverrideList *overrides, const Entry *entry)
+const char *overrides_cover(const OverrideList *overrides, const Entry *entry,
+                            bool poster)
 {
     char key[ENTRY_PATH_LEN];
     overrides_key(entry, key, sizeof(key));
 
     const Override *found = overrides_find(overrides, key);
-    return found ? found->cover_url : "";
+    if (!found)
+        return "";
+
+    return poster ? found->cover_poster : found->cover_icon;
 }
 
 void overrides_unhide_all(OverrideList *overrides)
@@ -267,10 +272,21 @@ Result overrides_load(OverrideList *overrides, const char *path)
             slot->hidden = cJSON_IsTrue(hidden);
             slot->promote = cJSON_IsTrue(promote);
 
-            cJSON *cover = cJSON_GetObjectItemCaseSensitive(node, "cover");
-            if (cJSON_IsString(cover) && cover->valuestring)
-                snprintf(slot->cover_url, sizeof(slot->cover_url), "%s",
-                         cover->valuestring);
+            cJSON *icon = cJSON_GetObjectItemCaseSensitive(node, "cover_icon");
+            if (cJSON_IsString(icon) && icon->valuestring)
+                snprintf(slot->cover_icon, sizeof(slot->cover_icon), "%s",
+                         icon->valuestring);
+
+            cJSON *poster = cJSON_GetObjectItemCaseSensitive(node, "cover_poster");
+            if (cJSON_IsString(poster) && poster->valuestring)
+                snprintf(slot->cover_poster, sizeof(slot->cover_poster), "%s",
+                         poster->valuestring);
+
+            /* Older configs stored one shared "cover"; treat it as the icon. */
+            cJSON *legacy = cJSON_GetObjectItemCaseSensitive(node, "cover");
+            if (!slot->cover_icon[0] && cJSON_IsString(legacy) && legacy->valuestring)
+                snprintf(slot->cover_icon, sizeof(slot->cover_icon), "%s",
+                         legacy->valuestring);
         }
     }
 
@@ -313,7 +329,8 @@ Result overrides_save(OverrideList *overrides, const char *path)
         const Override *slot = &overrides->items[i];
 
         /* Records back at their defaults carry no information; drop them. */
-        if (!slot->hidden && !slot->promote && !slot->cover_url[0])
+        if (!slot->hidden && !slot->promote && !slot->cover_icon[0] &&
+            !slot->cover_poster[0])
             continue;
 
         cJSON *node = cJSON_AddObjectToObject(entries, slot->key);
@@ -324,8 +341,10 @@ Result overrides_save(OverrideList *overrides, const char *path)
             cJSON_AddBoolToObject(node, "hidden", true);
         if (slot->promote)
             cJSON_AddBoolToObject(node, "promote", true);
-        if (slot->cover_url[0])
-            cJSON_AddStringToObject(node, "cover", slot->cover_url);
+        if (slot->cover_icon[0])
+            cJSON_AddStringToObject(node, "cover_icon", slot->cover_icon);
+        if (slot->cover_poster[0])
+            cJSON_AddStringToObject(node, "cover_poster", slot->cover_poster);
     }
 
     char *text = cJSON_Print(root);

@@ -86,6 +86,11 @@ bool render_init(Render *render)
     if (TTF_Init() != 0)
         return false;
 
+    /* 4x MSAA, requested before the window so SDL picks a multisampled config.
+       The 3D rooms are all long straight edges, which alias badly without it. */
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+    SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, 4);
+
     /* Ask for 1080p: docked output is native, and handheld is downscaled by the
        compositor rather than us drawing a smaller picture. */
     render->window = SDL_CreateWindow("VITRINE", SDL_WINDOWPOS_CENTERED,
@@ -363,28 +368,59 @@ void render_outline(Render *render, SDL_Rect rect, int thickness, SDL_Color colo
     }
 }
 
+/*
+ * Masks corners by overpainting them with the background. The boundary pixel is
+ * blended by its fractional coverage rather than snapped to a whole pixel,
+ * which is what stops the curve stair-stepping - very visible at 1080p.
+ */
 void render_round_corners(Render *render, SDL_Rect rect, int radius, SDL_Color bg)
 {
     if (radius <= 0)
         return;
 
-    SDL_SetRenderDrawColor(render->renderer, bg.r, bg.g, bg.b, 255);
+    /* Work in real pixels so the curve is smooth at any output scale. */
+    float s = render->scale;
+    SDL_FRect box = { rect.x * s, rect.y * s, rect.w * s, rect.h * s };
+    float r = radius * s;
 
-    for (int y = 0; y < radius; y++) {
-        /* Horizontal inset of the circle at this row. */
-        float dy = (float)(radius - y);
-        int inset = radius - (int)(sqrtf((float)(radius * radius) - dy * dy) + 0.5f);
-        if (inset <= 0)
+    SDL_RenderSetScale(render->renderer, 1.0f, 1.0f);
+
+    for (int y = 0; y < (int)r; y++) {
+        float dy = r - (float)y - 0.5f;
+        float span = sqrtf(r * r - dy * dy);
+        float inset = r - span;
+        if (inset <= 0.0f)
             continue;
 
-        SDL_Rect spans[4] = {
-            { rect.x,                  rect.y + y,                  inset, 1 },
-            { rect.x + rect.w - inset, rect.y + y,                  inset, 1 },
-            { rect.x,                  rect.y + rect.h - 1 - y,     inset, 1 },
-            { rect.x + rect.w - inset, rect.y + rect.h - 1 - y,     inset, 1 },
-        };
-        SDL_RenderFillRects(render->renderer, spans, 4);
+        int solid = (int)inset;
+        float partial = inset - (float)solid;
+
+        SDL_SetRenderDrawColor(render->renderer, bg.r, bg.g, bg.b, 255);
+        if (solid > 0) {
+            SDL_Rect spans[4] = {
+                { (int)box.x,                       (int)box.y + y,                    solid, 1 },
+                { (int)(box.x + box.w) - solid,     (int)box.y + y,                    solid, 1 },
+                { (int)box.x,                       (int)(box.y + box.h) - 1 - y,      solid, 1 },
+                { (int)(box.x + box.w) - solid,     (int)(box.y + box.h) - 1 - y,      solid, 1 },
+            };
+            SDL_RenderFillRects(render->renderer, spans, 4);
+        }
+
+        /* Feather the last pixel by how much of it the curve actually covers. */
+        if (partial > 0.01f) {
+            SDL_SetRenderDrawColor(render->renderer, bg.r, bg.g, bg.b,
+                                   (Uint8)(partial * 255.0f));
+            SDL_Rect edge[4] = {
+                { (int)box.x + solid,                   (int)box.y + y,               1, 1 },
+                { (int)(box.x + box.w) - solid - 1,     (int)box.y + y,               1, 1 },
+                { (int)box.x + solid,                   (int)(box.y + box.h) - 1 - y, 1, 1 },
+                { (int)(box.x + box.w) - solid - 1,     (int)(box.y + box.h) - 1 - y, 1, 1 },
+            };
+            SDL_RenderFillRects(render->renderer, edge, 4);
+        }
     }
+
+    SDL_RenderSetScale(render->renderer, s, s);
 }
 
 void render_shadow(Render *render, SDL_Rect rect, int spread)

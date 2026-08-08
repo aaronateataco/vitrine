@@ -48,7 +48,15 @@ bool   path_join(char *dst, size_t dst_size, const char *dir, const char *name);
 Result homebrew_scan(EntryList *list, const char *root);
 
 /* titles.c */
+
+/*
+ * Called during long scans so the caller can repaint and keep the applet loop
+ * alive. Without that the system treats the app as hung.
+ */
+typedef void (*ScanProgressFn)(void *ctx, size_t done, size_t total);
+
 Result titles_scan(EntryList *list);
+Result titles_scan_progress(EntryList *list, ScanProgressFn progress, void *ctx);
 
 /*
  * Reads NACP name/author out of an NRO's appended asset blob. False when the

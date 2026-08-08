@@ -41,13 +41,18 @@ void view_settings_fetch_covers(App *app)
             continue;
         }
 
-        app_status(app, "covers %zu/%zu: %s", i + 1, shelf->count, entry->name);
-        ui_draw_settings(app->render, &app->settings, prefs, &app->lib.list,
-                         &app->lib.shelves, &app->lib.overrides, app->core_note);
+        /* Each of these is a network round trip; without pumping, the console
+           decides the app has hung. */
+        if (!app_pump(app))
+            break;
+
+        app_progress(app, "Downloading covers", entry->name,
+                     (float)i / (float)shelf->count);
 
         if (sgdb_fetch_for_entry(prefs->sgdb_key, entry, prefs->poster_tiles,
                                  COVERS_DIR,
-                                 overrides_cover(&app->lib.overrides, entry),
+                                 overrides_cover(&app->lib.overrides, entry,
+                                                 prefs->poster_tiles),
                                  NULL, 0))
             got++;
     }

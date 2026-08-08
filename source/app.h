@@ -9,6 +9,7 @@
 #include "scene.h"
 #include "shelves.h"
 #include "ui.h"
+#include "user.h"
 
 /* Everything VITRINE writes lives under one directory, so a session can be
    copied off the card whole. */
@@ -60,6 +61,7 @@ typedef struct {
     PadState    *pad;
     IconCache   *icons;
     Scene       *scene;
+    User         user;
 
     Library      lib;
     RoomList     rooms;
@@ -82,6 +84,16 @@ void app_save_config(App *app);
 void app_clamp_shelf(App *app);
 void app_note_missing_cores(App *app);
 void app_status(App *app, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+
+/*
+ * Services the applet loop and SDL events during blocking work. Returns false
+ * when the system wants the app to quit. Any operation that can run for more
+ * than a frame must call this, or the console decides we have hung.
+ */
+bool app_pump(App *app);
+
+/// Pumps and repaints a progress screen in one call.
+void app_progress(App *app, const char *title, const char *detail, float fraction);
 
 /* NULL when the library is empty, which every caller must handle. */
 const Shelf *app_shelf(const App *app);

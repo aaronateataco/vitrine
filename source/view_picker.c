@@ -108,7 +108,8 @@ static void pin_selected(App *app)
 
     /* Pin first, then fetch through the normal path so the cache filename
        matches what the library will later look for. */
-    overrides_set_cover(&app->lib.overrides, entry, url);
+    overrides_set_cover(&app->lib.overrides, entry,
+                        app->lib.overrides.prefs.poster_tiles, url);
     app_save_config(app);
 
     if (sgdb_fetch_for_entry(app->lib.overrides.prefs.sgdb_key, entry,

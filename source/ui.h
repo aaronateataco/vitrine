@@ -82,6 +82,13 @@ void ui_draw(Render *render, IconCache *icons, const EntryList *list,
  */
 void ui_draw_mode_gate(Render *render);
 
+/// Full-screen progress, drawn during blocking work so the app never looks hung.
+/// Profile shown top-left in the console layout; both may be NULL.
+void ui_set_user(SDL_Texture *avatar, const char *nickname);
+
+void ui_draw_progress(Render *render, const Prefs *prefs, const char *title,
+                      const char *detail, float fraction);
+
 /*
  * Game Room. Split in two so the 3D pass can sit between them: begin paints the
  * background and returns the viewport the scene should fill, end lays the 2D

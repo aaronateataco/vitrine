@@ -64,6 +64,15 @@ const char *ui_theme_name(int index)
 
 static void theme_apply(const Prefs *prefs);
 
+static SDL_Texture *g_user_avatar = NULL;
+static char g_user_name[0x20] = { 0 };
+
+void ui_set_user(SDL_Texture *avatar, const char *nickname)
+{
+    g_user_avatar = avatar;
+    snprintf(g_user_name, sizeof(g_user_name), "%s", nickname ? nickname : "");
+}
+
 /* One place to bind the frame's theme, so every entry point agrees. */
 static void ui_frame(Render *render, const Prefs *prefs)
 {
@@ -617,6 +626,40 @@ void ui_room_end(Render *render, const Prefs *prefs, const char *title,
     SDL_RenderPresent(render->renderer);
 }
 
+void ui_draw_progress(Render *render, const Prefs *prefs, const char *title,
+                      const char *detail, float fraction)
+{
+    ui_frame(render, prefs);
+
+    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, g_theme->bg);
+
+    int bar_w = 640;
+    int bar_x = (SCREEN_W - bar_w) / 2;
+    int bar_y = SCREEN_H / 2;
+
+    render_text_fit(render, render->font_large, 0, bar_y - 96, SCREEN_W,
+                    g_theme->text, title);
+
+    if (detail && detail[0])
+        render_text_fit(render, render->font, 0, bar_y - 46, SCREEN_W,
+                        g_theme->dim, detail);
+
+    SDL_Rect track = { bar_x, bar_y, bar_w, 10 };
+    render_fill(render, track, g_theme->panel);
+    render_round_corners(render, track, 5, g_theme->bg);
+
+    if (fraction < 0.0f) fraction = 0.0f;
+    if (fraction > 1.0f) fraction = 1.0f;
+
+    if (fraction > 0.0f) {
+        SDL_Rect fill = { bar_x, bar_y, (int)(bar_w * fraction), 10 };
+        render_fill(render, fill, g_theme->accent);
+        render_round_corners(render, fill, 5, g_theme->bg);
+    }
+
+    SDL_RenderPresent(render->renderer);
+}
+
 void ui_draw_mode_gate(Render *render)
 {
     g_theme = &THEMES[0];
@@ -770,17 +813,23 @@ static void draw_console_chrome(Render *render, const EntryList *list)
 {
     char line[128];
 
-    /* Avatar row, standing in for the console's user circles. */
-    for (int i = 0; i < 4; i++) {
-        SDL_Rect dot = { CON_AVATAR_X + i * CON_AVATAR_PITCH, CON_AVATAR_Y,
-                         CON_AVATAR, CON_AVATAR };
-        render_fill(render, dot, i == 0 ? g_theme->raised : g_theme->panel);
-        render_round_corners(render, dot, CON_AVATAR / 2, g_theme->bg);
+    /* One profile, as the console shows for the signed-in user. */
+    SDL_Rect avatar = { CON_AVATAR_X, CON_AVATAR_Y, CON_AVATAR, CON_AVATAR };
+
+    if (g_user_avatar) {
+        SDL_RenderCopy(render->renderer, g_user_avatar, NULL, &avatar);
+    } else {
+        render_fill(render, avatar, g_theme->raised);
+        render_text_fit(render, render->font, avatar.x,
+                        avatar.y + CON_AVATAR / 2 - 14, CON_AVATAR,
+                        g_theme->text, "V");
     }
 
-    render_text_fit(render, render->font, CON_AVATAR_X,
-                    CON_AVATAR_Y + CON_AVATAR / 2 - 14, CON_AVATAR,
-                    g_theme->text, "V");
+    render_round_corners(render, avatar, CON_AVATAR / 2, g_theme->bg);
+
+    if (g_user_name[0])
+        render_text(render, render->font, CON_AVATAR_X + CON_AVATAR + 16,
+                    CON_AVATAR_Y + CON_AVATAR / 2 - 14, g_theme->dim, g_user_name);
 
     char clock[16];
     int battery = -1;

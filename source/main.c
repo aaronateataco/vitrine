@@ -167,6 +167,12 @@ int main(int argc, char **argv)
     memset(&app, 0, sizeof(app));
     app.render = &render;
     app.pad = &pad;
+
+    /* Ask who is playing, as a Switch title does. Declining is fine: the app
+       simply runs without a profile rather than refusing to start. */
+    if (user_select(&app.user, render.renderer))
+        ui_set_user(app.user.avatar, app.user.nickname);
+
     app.icons = icons_create(render.renderer, COVERS_DIR);
 
     if (!library_init(&app)) {
@@ -282,6 +288,7 @@ done:
         overrides_save(&app.lib.overrides, CONFIG_PATH);
 
     library_free(&app);
+    user_free(&app.user);
     icons_destroy(app.icons);
     render_exit(&render);
 

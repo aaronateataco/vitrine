@@ -82,11 +82,22 @@ int main(void)
     o.prefs.layout = 1;
     o.prefs.show_hidden = true;
 
-    /* Pinned covers persist alongside the flags. */
-    check("no cover pinned by default", overrides_cover(&o, &title)[0] == '\0');
-    overrides_set_cover(&o, &title, "https://cdn.example/grid/42.png");
-    check("cover pinned",
-          strcmp(overrides_cover(&o, &title), "https://cdn.example/grid/42.png") == 0);
+    /* Icon and poster art are pinned independently. */
+    check("no cover pinned by default",
+          overrides_cover(&o, &title, false)[0] == '\0');
+
+    overrides_set_cover(&o, &title, false, "https://cdn.example/icon/42.png");
+    overrides_set_cover(&o, &title, true, "https://cdn.example/grid/42.png");
+
+    check("icon pinned",
+          strcmp(overrides_cover(&o, &title, false),
+                 "https://cdn.example/icon/42.png") == 0);
+    check("poster pinned separately",
+          strcmp(overrides_cover(&o, &title, true),
+                 "https://cdn.example/grid/42.png") == 0);
+    check("pinning one shape leaves the other alone",
+          strcmp(overrides_cover(&o, &title, false),
+                 overrides_cover(&o, &title, true)) != 0);
 
     check("save succeeds", R_SUCCEEDED(overrides_save(&o, CONFIG)));
     check("save clears dirty", !o.dirty);
@@ -103,8 +114,12 @@ int main(void)
     check("cover size persisted", loaded.prefs.cover_size == 2);
     check("layout persisted", loaded.prefs.layout == 1);
     check("show-hidden preference persisted", loaded.prefs.show_hidden);
-    check("pinned cover persisted",
-          strcmp(overrides_cover(&loaded, &title), "https://cdn.example/grid/42.png") == 0);
+    check("pinned icon persisted",
+          strcmp(overrides_cover(&loaded, &title, false),
+                 "https://cdn.example/icon/42.png") == 0);
+    check("pinned poster persisted",
+          strcmp(overrides_cover(&loaded, &title, true),
+                 "https://cdn.example/grid/42.png") == 0);
 
     /* Unhide-all clears hidden flags without disturbing promotion. */
     overrides_unhide_all(&loaded);
@@ -130,14 +145,14 @@ int main(void)
     /* A pinned cover alone must keep a record alive, even with no flags set. */
     OverrideList covered;
     if (!overrides_init(&covered)) return 1;
-    overrides_set_cover(&covered, &rom, "https://cdn.example/icon/7.png");
+    overrides_set_cover(&covered, &rom, false, "https://cdn.example/icon/7.png");
     overrides_save(&covered, CONFIG);
 
     OverrideList recovered;
     if (!overrides_init(&recovered)) return 1;
     overrides_load(&recovered, CONFIG);
     check("cover-only record survives a round trip",
-          strcmp(overrides_cover(&recovered, &rom),
+          strcmp(overrides_cover(&recovered, &rom, false),
                  "https://cdn.example/icon/7.png") == 0);
     overrides_free(&recovered);
     overrides_free(&covered);

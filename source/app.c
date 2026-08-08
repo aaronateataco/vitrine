@@ -21,6 +21,24 @@ void app_status(App *app, const char *fmt, ...)
     va_end(args);
 }
 
+bool app_pump(App *app)
+{
+    SDL_Event event;
+    while (SDL_PollEvent(&event))
+        if (event.type == SDL_QUIT)
+            return false;
+
+    render_sync_output(app->render);
+    render_begin_frame(app->render);
+    return appletMainLoop();
+}
+
+void app_progress(App *app, const char *title, const char *detail, float fraction)
+{
+    app_pump(app);
+    ui_draw_progress(app->render, &app->lib.overrides.prefs, title, detail, fraction);
+}
+
 void app_clamp_shelf(App *app)
 {
     if (app->shelf_index >= app->lib.shelves.count)
@@ -49,6 +67,22 @@ void app_save_config(App *app)
         app_status(app, "could not write config.json");
 }
 
+/* Repaints roughly ten times across the title sweep - often enough to look
+   alive, rarely enough not to dominate the scan. */
+static void scan_tick(void *ctx, size_t done, size_t total)
+{
+    App *app = ctx;
+    size_t step = total / 10 ? total / 10 : 1;
+
+    if (done % step)
+        return;
+
+    char detail[96];
+    snprintf(detail, sizeof(detail), "installed games  %zu / %zu", done, total);
+    app_progress(app, "Scanning library", detail,
+                 total ? (float)done / (float)total : 0.0f);
+}
+
 void app_rescan(App *app)
 {
     Library *lib = &app->lib;
@@ -68,9 +102,14 @@ void app_rescan(App *app)
         for (size_t d = 0; d < lib->systems.items[i].nro_count; d++)
             homebrew_scan_dir(&lib->list, lib->systems.items[i].nro[d], (int)i);
 
+    app_progress(app, "Scanning library", "homebrew", 0.05f);
     Result hb = homebrew_scan(&lib->list, HOMEBREW_ROOT);
-    Result ns = titles_scan(&lib->list);
+
+    Result ns = titles_scan_progress(&lib->list, scan_tick, app);
+
+    app_progress(app, "Scanning library", "roms", 0.9f);
     roms_scan(&lib->list, &lib->systems);
+
     entry_list_sort(&lib->list);
     app_regroup(app);
 

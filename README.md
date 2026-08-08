@@ -82,6 +82,12 @@ corners to match its icon treatment. Colour values only; no Nintendo assets are 
 Cover size has three steps (Standard / Large / Extra large) in both square and poster
 shapes.
 
+## Profiles
+
+On launch VITRINE shows the console's own user selector, as a Switch title does. The
+chosen profile's picture and nickname appear top-left in the Console layout. Declining
+the picker is fine — the app runs without a profile rather than refusing to start.
+
 ## Cover art
 
 VITRINE can pull artwork from [SteamGridDB](https://www.steamgriddb.com). It ships no
@@ -106,6 +112,10 @@ pinned cover is recorded in `config.json` so bulk downloads will not overwrite i
 
 Thumbnails load one per frame with the highlighted cell fetched first, so the grid appears
 immediately and fills in rather than stalling until every candidate has downloaded.
+
+**Square icons and 2:3 posters are pinned independently.** They are different artwork, so
+locking one does not disturb the other, and both are cached side by side — switching cover
+shape does not re-download anything you have already fetched.
 
 Square icons are requested at **512px or larger** — anything smaller is visibly soft once
 a 1080p display scales it up to tile size.
