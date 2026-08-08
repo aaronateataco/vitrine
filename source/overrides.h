@@ -22,6 +22,7 @@ typedef struct {
     bool poster_tiles;   ///< 2:3 box art instead of 1:1 Switch-style icons.
     int  cover_size;     ///< 0 standard, 1 large, 2 extra large.
     int  theme;          ///< Index into the UI theme table.
+    int  layout;         ///< 0 shelves, 1 console-style carousel.
     char sgdb_key[128];  ///< SteamGridDB API key, entered via the system keyboard.
     char ra_user[64];    ///< RetroAchievements username.
     char ra_key[128];    ///< RetroAchievements web API key.

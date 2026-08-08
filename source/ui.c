@@ -474,6 +474,10 @@ void ui_draw_settings(Render *render, const Settings *settings, const Prefs *pre
                 label = "Theme";
                 value = ui_theme_name(prefs->theme);
                 break;
+            case Setting_Layout:
+                label = "Layout";
+                value = prefs->layout ? "Console" : "Shelves";
+                break;
             case Setting_PosterTiles:
                 label = "Cover shape";
                 value = prefs->poster_tiles ? "Poster 2:3" : "Square 1:1";
@@ -629,12 +633,205 @@ void ui_draw_mode_gate(Render *render)
     SDL_RenderPresent(render->renderer);
 }
 
+
+/* ---- Console layout ------------------------------------------------------
+ *
+ * Modelled on the Switch 2 HOME menu: an avatar mark top-left, a horizontal
+ * carousel of games through the middle, and a slim dock beneath. The console's
+ * dock holds system apps; here it holds platforms, which is the closest useful
+ * equivalent and keeps a multi-platform library reachable from a single row.
+ *
+ * Proportions are estimated from written descriptions, not measured from the
+ * real interface - this reads as the same shape, not as a pixel replica.
+ */
+
+#define CON_ICON       176
+#define CON_GAP         28
+#define CON_ROW_Y      148
+#define CON_TITLE_Y    404
+#define CON_DOCK_Y     536
+#define CON_DOCK_H      52
+#define CON_HINT_Y     650
+#define CON_SELECT     1.18f
+
+static void draw_console_tile(Render *render, IconCache *icons, const Entry *entry,
+                              size_t entry_index, int centre_x, bool selected,
+                              float pulse, bool hidden, const Prefs *prefs)
+{
+    int size = CON_ICON;
+    if (selected)
+        size = (int)(CON_ICON * (1.0f + (CON_SELECT - 1.0f) * pulse));
+
+    SDL_Rect rect = {
+        centre_x - size / 2,
+        CON_ROW_Y + (CON_ICON - size) / 2 + 40,
+        size, size
+    };
+
+    if (selected)
+        render_shadow(render, rect, 12);
+
+    SDL_Texture *texture = icons_get(icons, entry, entry_index, prefs->poster_tiles);
+
+    if (texture) {
+        SDL_RenderCopy(render->renderer, texture, NULL, &rect);
+    } else {
+        const char *tint = entry->author[0] ? entry->author : entry->name;
+        render_fill(render, rect, plate_color(tint));
+        render_text_fit(render, render->font, rect.x, rect.y + size / 2 - 14, size,
+                        g_theme->text, entry->name);
+    }
+
+    if (hidden) {
+        SDL_Color veil = g_theme->bg;
+        veil.a = 170;
+        render_fill(render, rect, veil);
+        render_text_fit(render, render->font, rect.x, rect.y + 8, size,
+                        g_theme->warn, "hidden");
+    }
+
+    render_round_corners(render, rect, size / 8, g_theme->bg);
+
+    if (selected) {
+        render_outline(render, rect, 3, g_theme->accent);
+    } else {
+        SDL_Color veil = g_theme->bg;
+        veil.a = 120;
+        render_fill(render, rect, veil);
+    }
+}
+
+/* The dock stands in for the console's system-app row, listing platforms. */
+static void draw_console_dock(Render *render, const ShelfList *shelves,
+                              size_t shelf_index)
+{
+    int total = 0;
+    int widths[64];
+    size_t shown = shelves->count < 64 ? shelves->count : 64;
+
+    for (size_t i = 0; i < shown; i++) {
+        int w = 0;
+        render_text_measure(render, render->font, shelves->items[i].name, &w, NULL);
+        widths[i] = w + 34;
+        total += widths[i] + 10;
+    }
+
+    if (total > 0)
+        total -= 10;
+
+    int x = (SCREEN_W - total) / 2;
+    if (x < MARGIN_X)
+        x = MARGIN_X;
+
+    for (size_t i = 0; i < shown; i++) {
+        bool active = (i == shelf_index);
+        SDL_Rect chip = { x, CON_DOCK_Y, widths[i], CON_DOCK_H };
+
+        render_fill(render, chip, active ? g_theme->raised : g_theme->panel);
+        render_round_corners(render, chip, CON_DOCK_H / 3, g_theme->bg);
+
+        if (active)
+            render_outline(render, chip, 2, g_theme->accent);
+
+        render_text_fit(render, render->font, chip.x, chip.y + 14, chip.w,
+                        active ? g_theme->text : g_theme->dim,
+                        shelves->items[i].name);
+        x += widths[i] + 10;
+    }
+}
+
+static void draw_console(Render *render, IconCache *icons, const EntryList *list,
+                         ShelfList *shelves, size_t shelf_index, UiState *state,
+                         const OverrideList *overrides, const char *status)
+{
+    const Prefs *prefs = &overrides->prefs;
+    char line[192];
+
+    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, g_theme->bg);
+
+    /* Avatar mark, standing in for My Page in the console's top-left. */
+    SDL_Rect avatar = { MARGIN_X, 34, 48, 48 };
+    render_fill(render, avatar, g_theme->raised);
+    render_round_corners(render, avatar, 24, g_theme->bg);
+    render_text_fit(render, render->font, avatar.x, avatar.y + 12, avatar.w,
+                    g_theme->text, "V");
+
+    snprintf(line, sizeof(line), "%zu items", list->count);
+    render_text_right(render, render->font, SCREEN_W - MARGIN_X, 48, g_theme->faint,
+                      line);
+
+    if (shelves->count == 0) {
+        render_text(render, render->font_large, MARGIN_X, CON_TITLE_Y, g_theme->dim,
+                    "Nothing found");
+        SDL_RenderPresent(render->renderer);
+        return;
+    }
+
+    Shelf *shelf = &shelves->items[shelf_index];
+
+    /* Centre the cursor; the carousel slides rather than paging. */
+    int pitch = CON_ICON + CON_GAP;
+    float target = (float)shelf->cursor * pitch;
+    shelf->scroll_x = approach(shelf->scroll_x, target, 0.22f);
+
+    SDL_Rect clip = { 0, CON_ROW_Y, SCREEN_W, CON_ICON + 90 };
+    SDL_RenderSetClipRect(render->renderer, &clip);
+
+    for (size_t i = 0; i < shelf->count; i++) {
+        int centre_x = SCREEN_W / 2 + (int)((float)i * pitch - shelf->scroll_x);
+        if (centre_x < -CON_ICON || centre_x > SCREEN_W + CON_ICON)
+            continue;
+
+        const Entry *entry = &list->items[shelf->items[i]];
+        bool hidden = overrides && overrides_hidden(overrides, entry);
+        draw_console_tile(render, icons, entry, shelf->items[i], centre_x,
+                          i == shelf->cursor, state->pulse, hidden, prefs);
+    }
+
+    SDL_RenderSetClipRect(render->renderer, NULL);
+
+    const Entry *selected = &list->items[shelf->items[shelf->cursor]];
+    render_text_fit(render, render->font_large, 0, CON_TITLE_Y, SCREEN_W,
+                    g_theme->text, selected->name);
+
+    const char *kind = selected->kind == EntryKind_Homebrew ? "Homebrew"
+                     : selected->kind == EntryKind_Game     ? "ROM"
+                                                            : "Installed";
+    if (selected->author[0])
+        snprintf(line, sizeof(line), "%s   %s   %zu / %zu", selected->author, kind,
+                 shelf->cursor + 1, shelf->count);
+    else
+        snprintf(line, sizeof(line), "%s   %zu / %zu", kind, shelf->cursor + 1,
+                 shelf->count);
+
+    render_text_fit(render, render->font, 0, CON_TITLE_Y + 46, SCREEN_W,
+                    g_theme->dim, line);
+
+    draw_console_dock(render, shelves, shelf_index);
+
+    render_text_fit(render, render->font, 0, CON_HINT_Y, SCREEN_W, g_theme->faint,
+                    "A  play        -  settings");
+
+    if (status && status[0])
+        render_text_fit(render, render->font, 0, CON_HINT_Y + 30, SCREEN_W,
+                        g_theme->warn, status);
+
+    SDL_RenderPresent(render->renderer);
+}
+
 void ui_draw(Render *render, IconCache *icons, const EntryList *list,
              ShelfList *shelves, size_t shelf_index, UiState *state,
              const OverrideList *overrides, const char *status)
 {
     const Prefs *prefs = &overrides->prefs;
     theme_apply(prefs);
+
+    if (prefs->layout == 1) {
+        state->pulse = approach(state->pulse * 1000.0f, 1000.0f, 0.25f) / 1000.0f;
+        draw_console(render, icons, list, shelves, shelf_index, state, overrides,
+                     status);
+        return;
+    }
 
     int pitch = shelf_h(prefs);
 

@@ -24,18 +24,19 @@ void ui_state_bump(UiState *state);
  */
 typedef enum {
     Setting_Theme       = 0,
-    Setting_PosterTiles = 1,
-    Setting_LargeTiles  = 2,
-    Setting_ShowHidden  = 3,
-    Setting_SgdbKey     = 4,
-    Setting_FetchCovers = 5,
-    Setting_RaUser      = 6,
-    Setting_RaKey       = 7,
-    Setting_TrophyRoom  = 8,
-    Setting_Rescan      = 9,
-    Setting_UnhideAll   = 10,
-    Setting_Diagnostics = 11,
-    Setting_Fixed       = 12,
+    Setting_Layout      = 1,
+    Setting_PosterTiles = 2,
+    Setting_LargeTiles  = 3,
+    Setting_ShowHidden  = 4,
+    Setting_SgdbKey     = 5,
+    Setting_FetchCovers = 6,
+    Setting_RaUser      = 7,
+    Setting_RaKey       = 8,
+    Setting_TrophyRoom  = 9,
+    Setting_Rescan      = 10,
+    Setting_UnhideAll   = 11,
+    Setting_Diagnostics = 12,
+    Setting_Fixed       = 13,
 } SettingRow;
 
 typedef struct {

@@ -245,6 +245,10 @@ Result overrides_load(OverrideList *overrides, const char *path)
         cJSON *theme = cJSON_GetObjectItemCaseSensitive(prefs, "theme");
         if (cJSON_IsNumber(theme) && theme->valueint >= 0)
             overrides->prefs.theme = theme->valueint;
+
+        cJSON *layout = cJSON_GetObjectItemCaseSensitive(prefs, "layout");
+        if (cJSON_IsNumber(layout) && layout->valueint >= 0 && layout->valueint <= 1)
+            overrides->prefs.layout = layout->valueint;
     }
 
     cJSON *entries = cJSON_GetObjectItemCaseSensitive(root, "entries");
@@ -296,6 +300,7 @@ Result overrides_save(OverrideList *overrides, const char *path)
             cJSON_AddStringToObject(prefs, "retroachievements_key",
                                     overrides->prefs.ra_key);
         cJSON_AddNumberToObject(prefs, "theme", overrides->prefs.theme);
+        cJSON_AddNumberToObject(prefs, "layout", overrides->prefs.layout);
     }
 
     cJSON *entries = cJSON_AddObjectToObject(root, "entries");

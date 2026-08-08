@@ -53,6 +53,20 @@ Settings covers **Appearance** (theme, cover shape, cover size), **Covers** (Ste
 key, download), **Library** (show hidden, rescan, unhide everything) and **Shelves** — a
 per-platform visibility toggle, so Homebrew or any console can be switched off entirely.
 
+### Layouts
+
+**Shelves** (default) stacks one horizontal row per platform, so the whole library is
+visible at once. **Console** follows the shape of the Switch 2 HOME menu: an avatar mark
+top-left, a horizontal carousel of games through the middle, the selected title beneath
+it, and a slim dock along the bottom. The console's dock holds system apps; here it holds
+your platforms, which is the closest useful equivalent and keeps a multi-platform library
+reachable from one row.
+
+Controls are identical in both — left/right moves through games, up/down changes platform.
+
+Proportions were estimated from written descriptions of the console's menu rather than
+measured from it, so this reads as the same shape rather than a pixel replica.
+
 Four themes: **Vitrine Dark**, **Switch 2 Dark**, **Switch 2 Light** and **Daylight**.
 The Switch 2 pair is monochrome because that is what the console ships — its themes are
 only Basic Dark and Basic Light, with no accent colour. Tiles are drawn with rounded

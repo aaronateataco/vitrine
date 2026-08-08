@@ -108,6 +108,10 @@ static void activate(App *app)
             prefs->theme = (prefs->theme + 1) % ui_theme_count();
             break;
 
+        case Setting_Layout:
+            prefs->layout = (prefs->layout + 1) % 2;
+            break;
+
         case Setting_PosterTiles:
             prefs->poster_tiles = !prefs->poster_tiles;
             break;

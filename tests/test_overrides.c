@@ -79,6 +79,7 @@ int main(void)
     /* Display prefs ride in the same file. */
     o.prefs.poster_tiles = true;
     o.prefs.cover_size = 2;
+    o.prefs.layout = 1;
     o.prefs.show_hidden = true;
 
     /* Pinned covers persist alongside the flags. */
@@ -100,6 +101,7 @@ int main(void)
     check("reload starts clean", !loaded.dirty);
     check("poster preference persisted", loaded.prefs.poster_tiles);
     check("cover size persisted", loaded.prefs.cover_size == 2);
+    check("layout persisted", loaded.prefs.layout == 1);
     check("show-hidden preference persisted", loaded.prefs.show_hidden);
     check("pinned cover persisted",
           strcmp(overrides_cover(&loaded, &title), "https://cdn.example/grid/42.png") == 0);
