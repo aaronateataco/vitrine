@@ -57,3 +57,10 @@ Result titles_scan(EntryList *list);
  */
 bool   nro_read_metadata(const char *path, char *name, size_t name_size,
                          char *author, size_t author_size);
+
+/*
+ * Scans one directory of NROs, attributing them to `system_index` (-1 for
+ * plain homebrew). Entries whose path is already present are skipped, so a
+ * directory claimed by a system does not also appear under Homebrew.
+ */
+Result homebrew_scan_dir(EntryList *list, const char *dir, int system_index);

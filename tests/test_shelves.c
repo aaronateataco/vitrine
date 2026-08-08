@@ -164,6 +164,28 @@ int main(void)
     check("un-hiding a shelf brings it back", shelves.count == baseline);
     check("nothing left in the hidden list", shelves.hidden_count == 0);
 
+    /* Homebrew claimed by a system (via nro= dirs) shelves with that system
+       rather than under Homebrew - this is how Viridite gets its own row. */
+    add_entry(&list, EntryKind_Homebrew, "Viridite Game", 0);   /* GBA */
+    entry_list_sort(&list);
+    shelves_build(&shelves, &list, &systems, &ov, false);
+
+    bool on_system = false;
+    bool on_homebrew = false;
+    for (size_t i = 0; i < shelves.count; i++)
+        for (size_t j = 0; j < shelves.items[i].count; j++) {
+            const Entry *e = &list.items[shelves.items[i].items[j]];
+            if (strcmp(e->name, "Viridite Game") != 0)
+                continue;
+            if (strcmp(shelves.items[i].name, "Game Boy Advance") == 0)
+                on_system = true;
+            if (strcmp(shelves.items[i].name, "Homebrew") == 0)
+                on_homebrew = true;
+        }
+
+    check("system-claimed homebrew shelves with its system", on_system);
+    check("system-claimed homebrew is not also under Homebrew", !on_homebrew);
+
     overrides_free(&ov);
     shelves_free(&shelves);
     entry_list_free(&list);

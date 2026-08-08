@@ -130,13 +130,25 @@ static bool read_nro_metadata(const char *path, Entry *entry)
     return false;
 }
 
-static void add_nro(EntryList *list, const char *path)
+static bool already_listed(const EntryList *list, const char *path)
 {
+    for (size_t i = 0; i < list->count; i++)
+        if (strcmp(list->items[i].path, path) == 0)
+            return true;
+    return false;
+}
+
+static void add_nro_owned(EntryList *list, const char *path, int system_index)
+{
+    if (already_listed(list, path))
+        return;
+
     Entry *entry = entry_list_add(list);
     if (!entry)
         return;
 
     entry->kind = EntryKind_Homebrew;
+    entry->system_index = system_index;
     snprintf(entry->path, sizeof(entry->path), "%s", path);
 
     if (read_nro_metadata(path, entry))
@@ -150,6 +162,11 @@ static void add_nro(EntryList *list, const char *path)
     char *dot = strrchr(entry->name, '.');
     if (dot)
         *dot = '\0';
+}
+
+static void add_nro(EntryList *list, const char *path)
+{
+    add_nro_owned(list, path, -1);
 }
 
 static void scan_subdirectory(EntryList *list, const char *path)
@@ -175,6 +192,26 @@ static void scan_subdirectory(EntryList *list, const char *path)
  * Follows the hbmenu layout: NROs sit either directly in /switch or one level
  * down in a per-app folder. Deeper nesting is not a convention, so it is ignored.
  */
+Result homebrew_scan_dir(EntryList *list, const char *dir, int system_index)
+{
+    DIR *handle = opendir(dir);
+    if (!handle)
+        return MAKERESULT(Module_Libnx, LibnxError_NotFound);
+
+    struct dirent *item;
+    while ((item = readdir(handle)) != NULL) {
+        if (item->d_name[0] == '.' || !has_nro_extension(item->d_name))
+            continue;
+
+        char path[ENTRY_PATH_LEN];
+        if (path_join(path, sizeof(path), dir, item->d_name))
+            add_nro_owned(list, path, system_index);
+    }
+
+    closedir(handle);
+    return 0;
+}
+
 Result homebrew_scan(EntryList *list, const char *root)
 {
     DIR *dir = opendir(root);

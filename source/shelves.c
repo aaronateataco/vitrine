@@ -120,10 +120,17 @@ void shelves_build(ShelfList *shelves, const EntryList *list, const SystemList *
                 shelf = shelf_find(shelves, SHELF_TITLES);
                 break;
             case EntryKind_Homebrew:
-                /* Re-tagged homebrew files sit with the installed games. */
-                shelf = shelf_find(shelves,
-                                   overrides && overrides_promoted(overrides, entry)
-                                       ? SHELF_TITLES : SHELF_HOMEBREW);
+                if (overrides && overrides_promoted(overrides, entry)) {
+                    /* Re-tagged homebrew sits with the installed games. */
+                    shelf = shelf_find(shelves, SHELF_TITLES);
+                } else if (entry->system_index >= 0 &&
+                           (size_t)entry->system_index < systems->count) {
+                    /* Claimed by a system (e.g. Viridite) via its nro= dirs. */
+                    shelf = shelf_find(shelves,
+                                       systems->items[entry->system_index].name);
+                } else {
+                    shelf = shelf_find(shelves, SHELF_HOMEBREW);
+                }
                 break;
             case EntryKind_Game:
                 if (entry->system_index >= 0 &&

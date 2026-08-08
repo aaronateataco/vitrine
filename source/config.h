@@ -22,6 +22,12 @@ typedef struct {
     size_t core_count;
     char   roms[SYSTEM_MAX_ROMS][ENTRY_PATH_LEN]; ///< Directories to scan.
     size_t roms_count;
+    /*
+     * Directories of standalone NROs that belong on this shelf rather than in
+     * Homebrew. Launched directly; no core is involved.
+     */
+    char   nro[SYSTEM_MAX_ROMS][ENTRY_PATH_LEN];
+    size_t nro_count;
     char   extensions[SYSTEM_EXTS_LEN]; ///< Comma-separated, without dots.
     char   args[SYSTEM_ARGS_LEN];       ///< Template using {core} and {rom}.
 } System;

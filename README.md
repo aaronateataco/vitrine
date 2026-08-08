@@ -116,6 +116,17 @@ extensions = gba, agb
 args = "{core}" "{rom}"
 ```
 
+A section may instead use `nro = <directory>` to claim a folder of standalone NROs, which
+then get their own shelf rather than sitting in Homebrew:
+
+```ini
+[Viridite]
+nro = sdmc:/switch/Viridite Games
+```
+
+Those launch directly, with no core involved. The generic `/switch` sweep skips anything
+already claimed this way, so nothing appears twice.
+
 `core` and `roms` are both repeatable — cores in preference order, ROM directories all
 scanned — so an existing **tico** library is picked up in place without depending on it. Missing directories are skipped silently. `args` defaults to `"{core}" "{rom}"`;
 set it per system if a core wants a different command line. Press **Y** to reload.

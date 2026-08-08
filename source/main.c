@@ -52,6 +52,12 @@ static void rescan(Library *lib, char *status, size_t status_size)
         systems_load(&lib->systems, SYSTEMS_PATH);
     }
 
+    /* Before the generic sweep, so claimed directories are attributed and the
+       dedupe in homebrew_scan_dir keeps them out of Homebrew. */
+    for (size_t i = 0; i < lib->systems.count; i++)
+        for (size_t d = 0; d < lib->systems.items[i].nro_count; d++)
+            homebrew_scan_dir(&lib->list, lib->systems.items[i].nro[d], (int)i);
+
     Result hb = homebrew_scan(&lib->list, HOMEBREW_ROOT);
     Result ns = titles_scan(&lib->list);
     roms_scan(&lib->list, &lib->systems);

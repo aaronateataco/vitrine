@@ -122,6 +122,13 @@ Result systems_load(SystemList *systems, const char *path)
                 current->roms_count++;
             }
         }
+        else if (strcasecmp(key, "nro") == 0) {
+            if (*value && current->nro_count < SYSTEM_MAX_ROMS) {
+                copy_str(current->nro[current->nro_count],
+                         sizeof(current->nro[0]), value);
+                current->nro_count++;
+            }
+        }
         else if (strcasecmp(key, "extensions") == 0)
             copy_str(current->extensions, sizeof(current->extensions), value);
         else if (strcasecmp(key, "args") == 0 && *value)
@@ -149,6 +156,8 @@ Result systems_write_example(const char *path)
           "#               tico's cores return to tico when a game exits.\n"
           "#   roms        directory to scan, searched recursively.\n"
           "#               Repeat the key to scan several libraries.\n"
+          "#   nro         directory of standalone NROs that belong on this\n"
+          "#               shelf instead of Homebrew (launched directly)\n"
           "#   extensions  comma-separated, no dots\n"
           "#   args        optional; {core} and {rom} are substituted\n"
           "#               defaults to: " DEFAULT_ARGS "\n"
@@ -185,6 +194,9 @@ Result systems_write_example(const char *path)
           "roms = sdmc:/roms/n64\n"
           "roms = sdmc:/tico/roms/n64\n"
           "extensions = n64, z64, v64\n"
+          "\n"
+          "[Viridite]\n"
+          "nro = sdmc:/switch/Viridite Games\n"
           "\n"
           "[PlayStation]\n"
           "core = sdmc:/switch/vitrine/cores/pcsx_rearmed_libretro_libnx.nro\n"
