@@ -53,6 +53,13 @@ Settings covers **Appearance** (theme, cover shape, cover size), **Covers** (Ste
 key, download), **Library** (show hidden, rescan, unhide everything) and **Shelves** — a
 per-platform visibility toggle, so Homebrew or any console can be switched off entirely.
 
+### Resolution
+
+Layout is authored against a fixed 1280x720 space and scaled to whatever the console is
+actually outputting. Docked, that means a native 1080p picture rather than a magnified
+720p one: **fonts are rasterised at the real pixel size** and the text cache is rebuilt
+when you dock or undock, so text stays sharp instead of being upscaled.
+
 ### Layouts
 
 **Shelves** (default) stacks one horizontal row per platform, so the whole library is
@@ -93,11 +100,15 @@ downloaded cover takes precedence over the console's own icon.
 fetches icons. Covers uploaded by `sodasoba` are preferred over all others; remaining
 candidates are ordered by SteamGridDB's own score.
 
-**Choosing a specific cover:** highlight a game and click the **right stick**. That lists
-every candidate with its uploader and score, previews the highlighted one, and **A** pins
-your choice. A pinned cover is recorded in `config.json` and survives re-fetching, so
-bulk downloads will not overwrite it. Previews are downloaded only for the highlighted
-row, so opening the list stays fast.
+**Choosing a specific cover:** highlight a game and click the **right stick** for a 5x3
+grid of every candidate. The preferred uploader is starred, **A** pins your choice, and a
+pinned cover is recorded in `config.json` so bulk downloads will not overwrite it.
+
+Thumbnails load one per frame with the highlighted cell fetched first, so the grid appears
+immediately and fills in rather than stalling until every candidate has downloaded.
+
+Square icons are requested at **512px or larger** — anything smaller is visibly soft once
+a 1080p display scales it up to tile size.
 
 HTTPS needs no CA bundle: devkitPro builds curl against the console's own SSL service.
 

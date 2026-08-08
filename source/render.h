@@ -5,6 +5,12 @@
 
 #include "entry.h"
 
+/*
+ * Layout is authored against this virtual size and scaled to whatever the
+ * console is actually outputting: 720p handheld, 1080p docked. Fonts are
+ * rasterised at the real pixel size rather than upscaled, so docked output is
+ * genuinely sharp instead of a magnified 720p image.
+ */
 enum {
     SCREEN_W = 1280,
     SCREEN_H = 720,
@@ -16,7 +22,31 @@ typedef struct {
     TTF_Font     *font;        ///< Body text.
     TTF_Font     *font_large;  ///< Headings and the selected title.
     void         *text_cache;  ///< Opaque; see render.c.
+
+    int    width;              ///< Real output width in pixels.
+    int    height;
+    float  scale;              ///< height / SCREEN_H.
 } Render;
+
+/*
+ * Re-reads the output size. When it changes - docking or undocking - fonts are
+ * rebuilt at the new pixel size and the text cache is dropped, since every
+ * cached glyph run is now the wrong size.
+ */
+void render_sync_output(Render *render);
+
+/*
+ * Call once per frame before drawing. Scales the coordinate space so all layout
+ * stays authored in SCREEN_W x SCREEN_H while output is native resolution.
+ */
+void render_begin_frame(Render *render);
+
+/*
+ * Clock and battery for the console layout's status bar, mirroring what the
+ * real HOME menu shows. Battery is -1 when psm is unavailable.
+ */
+void render_system_status(char *clock, size_t clock_size, int *battery_percent,
+                          bool *charging);
 
 bool render_init(Render *render);
 void render_exit(Render *render);

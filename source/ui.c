@@ -61,6 +61,15 @@ const char *ui_theme_name(int index)
     return THEMES[index].name;
 }
 
+static void theme_apply(const Prefs *prefs);
+
+/* One place to bind the frame's theme, so every entry point agrees. */
+static void ui_frame(Render *render, const Prefs *prefs)
+{
+    (void)render;
+    theme_apply(prefs);
+}
+
 static void theme_apply(const Prefs *prefs)
 {
     int index = prefs->theme;
@@ -317,93 +326,96 @@ static void draw_footer(Render *render, const EntryList *list,
 void ui_draw_cover_picker(Render *render, const CoverPicker *picker,
                           const Entry *entry, const Prefs *prefs)
 {
-    enum { VISIBLE = 9, ROW_H = 36 };
+    enum { COLS = 5, ROWS = 3, CELL = 196, GAP = 22 };
 
-    theme_apply(prefs);
+    ui_frame(render, prefs);
 
-    const int list_x = 72;
-    const int list_w = 520;
-    const int preview_x = 640;
-    const int preview_w = 560;
     char line[192];
 
     render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, g_theme->bg);
-    render_text(render, render->font_large, list_x, 40, g_theme->text, "Choose a cover");
-    render_text_fit(render, render->font, list_x, 82, list_w, g_theme->dim, entry->name);
+    render_text(render, render->font_large, MARGIN_X, 32, g_theme->text,
+                "Choose a cover");
+    render_text_fit(render, render->font, MARGIN_X, 76, SCREEN_W - 2 * MARGIN_X,
+                    g_theme->dim, entry->name);
 
     if (picker->covers.count == 0) {
-        render_text(render, render->font, list_x, 150, g_theme->warn,
+        render_text(render, render->font, MARGIN_X, 180, g_theme->warn,
                     picker->message[0] ? picker->message : "No covers found");
-        render_text_right(render, render->font, SCREEN_W - 72, SCREEN_H - 56,
+        render_text_right(render, render->font, SCREEN_W - MARGIN_X, SCREEN_H - 56,
                           g_theme->faint, "B  back");
         SDL_RenderPresent(render->renderer);
         return;
     }
 
-    size_t start = 0;
-    if (picker->covers.count > VISIBLE) {
-        if (picker->index > VISIBLE / 2)
-            start = picker->index - VISIBLE / 2;
-        if (start + VISIBLE > picker->covers.count)
-            start = picker->covers.count - VISIBLE;
-    }
+    /* Scroll by whole rows so tiles never straddle the viewport edge. */
+    size_t page = COLS * ROWS;
+    size_t first_row = (picker->index / COLS);
+    size_t top_row = first_row >= ROWS ? first_row - (ROWS - 1) : 0;
+    size_t start_index = top_row * COLS;
 
-    int y = 132;
-    for (size_t i = start; i < picker->covers.count && i < start + VISIBLE; i++) {
-        const SgdbCover *cover = &picker->covers.items[i];
+    int grid_w = COLS * CELL + (COLS - 1) * GAP;
+    int origin_x = (SCREEN_W - grid_w) / 2;
+    int origin_y = 124;
+
+    for (size_t i = start_index; i < picker->covers.count && i < start_index + page; i++) {
+        size_t slot = i - start_index;
+        int col = (int)(slot % COLS);
+        int row = (int)(slot / COLS);
         bool active = (i == picker->index);
 
+        SDL_Rect cell = {
+            origin_x + col * (CELL + GAP),
+            origin_y + row * (CELL + GAP),
+            CELL, CELL
+        };
+
         if (active)
-            render_fill(render, (SDL_Rect){ list_x - 14, y - 6, list_w + 28, ROW_H - 2 },
-                        g_theme->raised);
+            render_shadow(render, cell, 10);
 
-        snprintf(line, sizeof(line), "%s%s", cover->preferred ? "* " : "  ",
-                 cover->author[0] ? cover->author : "unknown uploader");
-        render_text(render, render->font, list_x, y, active ? g_theme->text : g_theme->dim,
-                    line);
-
-        snprintf(line, sizeof(line), "%d", cover->score);
-        render_text_right(render, render->font, list_x + list_w, y, g_theme->faint, line);
-        y += ROW_H;
-    }
-
-    /* Preview pane, letterboxed into the available area. */
-    SDL_Rect frame = { preview_x, 132, preview_w, 420 };
-    render_fill(render, frame, g_theme->panel);
-
-    if (picker->preview && picker->preview_index == picker->index) {
-        int tw = 0;
-        int th = 0;
-        SDL_QueryTexture(picker->preview, NULL, NULL, &tw, &th);
-
-        if (tw > 0 && th > 0) {
-            float scale = (float)frame.w / tw;
-            float fit_h = (float)frame.h / th;
-            if (fit_h < scale)
-                scale = fit_h;
-
-            SDL_Rect dst = {
-                frame.x + (frame.w - (int)(tw * scale)) / 2,
-                frame.y + (frame.h - (int)(th * scale)) / 2,
-                (int)(tw * scale), (int)(th * scale)
-            };
-            SDL_RenderCopy(render->renderer, picker->preview, NULL, &dst);
-            render_round_corners(render, dst, dst.w / 12, g_theme->panel);
+        if (picker->thumbs[i]) {
+            SDL_RenderCopy(render->renderer, picker->thumbs[i], NULL, &cell);
+        } else {
+            render_fill(render, cell, g_theme->panel);
+            render_text_fit(render, render->font, cell.x, cell.y + CELL / 2 - 12,
+                            CELL, g_theme->faint, "loading");
         }
-    } else {
-        render_text_fit(render, render->font, frame.x, frame.y + frame.h / 2 - 12,
-                        frame.w, g_theme->faint, "loading preview...");
+
+        render_round_corners(render, cell, CELL / 12, g_theme->bg);
+
+        if (active) {
+            render_outline(render, cell, 3, g_theme->accent);
+        } else {
+            SDL_Color veil = g_theme->bg;
+            veil.a = 110;
+            render_fill(render, cell, veil);
+        }
+
+        /* The preferred uploader is the whole point of the ordering, so mark it. */
+        if (picker->covers.items[i].preferred)
+            render_text(render, render->font, cell.x + 10, cell.y + 8,
+                        g_theme->accent, "*");
     }
 
-    snprintf(line, sizeof(line), "%zu of %zu   *  preferred uploader",
-             picker->index + 1, picker->covers.count);
-    render_text(render, render->font, list_x, SCREEN_H - 92, g_theme->faint, line);
+    const SgdbCover *chosen = &picker->covers.items[picker->index];
+    snprintf(line, sizeof(line), "%zu of %zu   %s   score %d",
+             picker->index + 1, picker->covers.count,
+             chosen->preferred ? "preferred uploader"
+                               : (chosen->author[0] ? chosen->author : "unknown"),
+             chosen->score);
+    render_text(render, render->font, MARGIN_X, SCREEN_H - 96, g_theme->dim, line);
+
+    if (picker->loaded < picker->covers.count) {
+        snprintf(line, sizeof(line), "loading thumbnails %zu/%zu",
+                 picker->loaded, picker->covers.count);
+        render_text(render, render->font, MARGIN_X, SCREEN_H - 60, g_theme->faint,
+                    line);
+    }
 
     if (picker->message[0])
-        render_text(render, render->font, list_x, SCREEN_H - 60, g_theme->warn,
+        render_text(render, render->font, MARGIN_X, SCREEN_H - 60, g_theme->warn,
                     picker->message);
 
-    render_text_right(render, render->font, SCREEN_W - 72, SCREEN_H - 60,
+    render_text_right(render, render->font, SCREEN_W - MARGIN_X, SCREEN_H - 60,
                       g_theme->faint, "A  use this cover        B  back");
 
     SDL_RenderPresent(render->renderer);
@@ -415,7 +427,7 @@ void ui_draw_settings(Render *render, const Settings *settings, const Prefs *pre
 {
     enum { VISIBLE_ROWS = 11, ROW_H = 34 };
 
-    theme_apply(prefs);
+    ui_frame(render, prefs);
 
     const int panel_w = 820;
     const int panel_x = (SCREEN_W - panel_w) / 2;
@@ -573,7 +585,7 @@ void ui_draw_settings(Render *render, const Settings *settings, const Prefs *pre
 
 SDL_Rect ui_room_begin(Render *render, const Prefs *prefs)
 {
-    theme_apply(prefs);
+    ui_frame(render, prefs);
 
     render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, g_theme->bg);
 
@@ -585,7 +597,7 @@ SDL_Rect ui_room_begin(Render *render, const Prefs *prefs)
 void ui_room_end(Render *render, const Prefs *prefs, const char *title,
                  const char *subtitle, const char *source)
 {
-    theme_apply(prefs);
+    ui_frame(render, prefs);
 
     render_text(render, render->font_large, MARGIN_X, 34, g_theme->text, title);
 
@@ -756,7 +768,18 @@ static void draw_console(Render *render, IconCache *icons, const EntryList *list
     render_text_fit(render, render->font, avatar.x, avatar.y + 12, avatar.w,
                     g_theme->text, "V");
 
-    snprintf(line, sizeof(line), "%zu items", list->count);
+    /* Status cluster, as the console shows top-right. */
+    char clock[16];
+    int battery = -1;
+    bool charging = false;
+    render_system_status(clock, sizeof(clock), &battery, &charging);
+
+    if (battery >= 0)
+        snprintf(line, sizeof(line), "%zu items      %s      %d%%%s", list->count,
+                 clock, battery, charging ? " +" : "");
+    else
+        snprintf(line, sizeof(line), "%zu items      %s", list->count, clock);
+
     render_text_right(render, render->font, SCREEN_W - MARGIN_X, 48, g_theme->faint,
                       line);
 
@@ -824,7 +847,7 @@ void ui_draw(Render *render, IconCache *icons, const EntryList *list,
              const OverrideList *overrides, const char *status)
 {
     const Prefs *prefs = &overrides->prefs;
-    theme_apply(prefs);
+    ui_frame(render, prefs);
 
     if (prefs->layout == 1) {
         state->pulse = approach(state->pulse * 1000.0f, 1000.0f, 0.25f) / 1000.0f;

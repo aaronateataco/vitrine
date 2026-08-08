@@ -86,7 +86,10 @@ bool sgdb_list_covers(const char *api_key, int game_id, bool poster,
     if (poster)
         snprintf(url, sizeof(url), SGDB_API "/grids/game/%d?dimensions=600x900", game_id);
     else
-        snprintf(url, sizeof(url), SGDB_API "/icons/game/%d", game_id);
+        /* 512 is the floor: smaller icons are visibly soft once a 1080p display
+           scales them up to tile size. */
+        snprintf(url, sizeof(url), SGDB_API "/icons/game/%d?dimensions=512,1024",
+                 game_id);
 
     char *body = NULL;
     if (!net_get(url, api_key, &body, NULL))
@@ -111,6 +114,11 @@ bool sgdb_list_covers(const char *api_key, int game_id, bool poster,
             SgdbCover *cover = &out->items[out->count];
             memset(cover, 0, sizeof(*cover));
             snprintf(cover->url, sizeof(cover->url), "%s", href);
+
+            /* Fall back to the full image when no thumbnail is offered. */
+            const char *thumb = json_string(node, "thumb");
+            snprintf(cover->thumb, sizeof(cover->thumb), "%s",
+                     thumb[0] ? thumb : href);
             cover->id = json_int(node, "id");
             cover->score = json_int(node, "score");
 

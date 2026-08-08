@@ -12,14 +12,17 @@ void view_picker_close(App *app)
 {
     CoverPicker *picker = &app->picker;
 
-    if (picker->preview) {
-        SDL_DestroyTexture(picker->preview);
-        picker->preview = NULL;
+    for (size_t i = 0; i < SGDB_MAX_COVERS; i++) {
+        if (picker->thumbs[i]) {
+            SDL_DestroyTexture(picker->thumbs[i]);
+            picker->thumbs[i] = NULL;
+        }
     }
 
     picker->open = false;
     picker->covers.count = 0;
     picker->index = 0;
+    picker->loaded = 0;
     picker->message[0] = '\0';
 }
 
@@ -43,7 +46,7 @@ void view_picker_open(App *app)
     }
 
     picker->open = true;
-    picker->preview_index = (size_t)-1;
+    picker->loaded = 0;
 
     int game_id = 0;
     if (!sgdb_find_game(prefs->sgdb_key, entry->name, &game_id)) {
@@ -57,28 +60,40 @@ void view_picker_open(App *app)
         snprintf(picker->message, sizeof(picker->message), "no covers returned");
 }
 
-/* Fetched only for the highlighted row: downloading every candidate up front
-   would make opening the list slow for artwork nobody looks at. */
-static void refresh_preview(App *app)
+/*
+ * One thumbnail per frame. Fetching all of them before showing anything would
+ * stall the picker for seconds; this way the grid appears immediately and fills
+ * in, and the highlighted cell is fetched first so it is never the last to
+ * arrive.
+ */
+static void load_next_thumb(App *app)
 {
     CoverPicker *picker = &app->picker;
 
-    if (picker->covers.count == 0 || picker->preview_index == picker->index)
+    if (picker->loaded >= picker->covers.count)
         return;
 
-    if (picker->preview) {
-        SDL_DestroyTexture(picker->preview);
-        picker->preview = NULL;
+    size_t target = picker->index;
+    if (picker->thumbs[target]) {
+        target = picker->covers.count;
+        for (size_t i = 0; i < picker->covers.count; i++)
+            if (!picker->thumbs[i]) {
+                target = i;
+                break;
+            }
+        if (target == picker->covers.count)
+            return;
     }
 
     char temp[512];
-    snprintf(temp, sizeof(temp), "%s/.preview.png", COVERS_DIR);
+    snprintf(temp, sizeof(temp), "%s/.thumb.png", COVERS_DIR);
     mkdir(COVERS_DIR, 0777);
 
-    if (net_download(picker->covers.items[picker->index].url, temp))
-        picker->preview = IMG_LoadTexture(app->render->renderer, temp);
+    if (net_download(picker->covers.items[target].thumb, temp))
+        picker->thumbs[target] = IMG_LoadTexture(app->render->renderer, temp);
 
-    picker->preview_index = picker->index;
+    /* Counted either way, so a broken thumbnail cannot wedge the loop. */
+    picker->loaded++;
 }
 
 static void pin_selected(App *app)
@@ -120,11 +135,18 @@ bool view_picker_update(App *app, u64 down)
     }
 
     if (picker->covers.count > 0) {
-        if (down & HidNpadButton_AnyUp)
+        /* Grid navigation: five across, matching the drawn layout. */
+        enum { COLS = 5 };
+
+        if (down & HidNpadButton_AnyLeft)
             picker->index = picker->index ? picker->index - 1
                                           : picker->covers.count - 1;
-        if (down & HidNpadButton_AnyDown)
+        if (down & HidNpadButton_AnyRight)
             picker->index = (picker->index + 1) % picker->covers.count;
+        if ((down & HidNpadButton_AnyUp) && picker->index >= COLS)
+            picker->index -= COLS;
+        if ((down & HidNpadButton_AnyDown) && picker->index + COLS < picker->covers.count)
+            picker->index += COLS;
 
         if (down & HidNpadButton_A)
             pin_selected(app);
@@ -133,7 +155,7 @@ bool view_picker_update(App *app, u64 down)
     /* pin_selected may have closed the picker on success. */
     if (picker->open) {
         const Entry *entry = app_entry(app);
-        refresh_preview(app);
+        load_next_thumb(app);
 
         if (entry)
             ui_draw_cover_picker(app->render, picker, entry,

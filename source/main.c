@@ -17,6 +17,9 @@ static void run_mode_gate(Render *render, PadState *pad)
             if (event.type == SDL_QUIT)
                 return;
 
+        render_sync_output(render);
+        render_begin_frame(render);
+
         padUpdate(pad);
         if (padGetButtonsDown(pad) & HidNpadButton_Plus)
             return;
@@ -199,6 +202,10 @@ int main(int argc, char **argv)
         while (SDL_PollEvent(&event))
             if (event.type == SDL_QUIT)
                 goto done;
+
+        /* Docking changes the output size, which changes font sizes. */
+        render_sync_output(&render);
+        render_begin_frame(&render);
 
         padUpdate(&pad);
         u64 down = padGetButtonsDown(&pad);

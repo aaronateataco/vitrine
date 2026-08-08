@@ -2,8 +2,11 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include <time.h>
+
 #include <switch.h>
 
+#include "diag.h"
 #include "render.h"
 
 #define TEXT_CACHE_SLOTS 96
@@ -22,38 +25,56 @@ typedef struct {
     size_t    count;
 } TextCache;
 
+static void cache_flush(TextCache *cache);
+
 /*
  * The system font lives in pl's shared memory. libnx hands back a pointer and a
  * length with no transformation, and FreeType consumes it directly - so nothing
  * needs decoding and no font has to be shipped with the app. The data is never
  * copied off the console.
  */
+static PlFontData g_font_data;
+static bool g_psm_ready = false;
+static bool g_font_ready = false;
+
+/* Rasterised at the real output size; upscaling 720p text is what makes a
+   docked launcher look soft. */
+static bool open_fonts(Render *render)
+{
+    int body_px = (int)(22.0f * render->scale + 0.5f);
+    int head_px = (int)(30.0f * render->scale + 0.5f);
+
+    if (render->font)       TTF_CloseFont(render->font);
+    if (render->font_large) TTF_CloseFont(render->font_large);
+    render->font = NULL;
+    render->font_large = NULL;
+
+    /* SDL takes ownership of neither RWops target; the memory is pl's. */
+    SDL_RWops *body = SDL_RWFromConstMem(g_font_data.address, (int)g_font_data.size);
+    SDL_RWops *head = SDL_RWFromConstMem(g_font_data.address, (int)g_font_data.size);
+    if (!body || !head)
+        return false;
+
+    render->font = TTF_OpenFontRW(body, 1, body_px);
+    render->font_large = TTF_OpenFontRW(head, 1, head_px);
+
+    return render->font != NULL && render->font_large != NULL;
+}
+
 static bool load_shared_font(Render *render)
 {
-    static PlFontData font_data;
-
     Result rc = plInitialize(PlServiceType_User);
     if (R_FAILED(rc))
         return false;
 
-    rc = plGetSharedFontByType(&font_data, PlSharedFontType_Standard);
+    rc = plGetSharedFontByType(&g_font_data, PlSharedFontType_Standard);
     if (R_FAILED(rc)) {
         plExit();
         return false;
     }
 
-    /* SDL takes ownership of neither RWops target; the memory is pl's. */
-    SDL_RWops *body = SDL_RWFromConstMem(font_data.address, (int)font_data.size);
-    SDL_RWops *head = SDL_RWFromConstMem(font_data.address, (int)font_data.size);
-    if (!body || !head) {
-        plExit();
-        return false;
-    }
-
-    render->font = TTF_OpenFontRW(body, 1, 22);
-    render->font_large = TTF_OpenFontRW(head, 1, 30);
-
-    return render->font != NULL && render->font_large != NULL;
+    g_font_ready = true;
+    return open_fonts(render);
 }
 
 bool render_init(Render *render)
@@ -65,8 +86,10 @@ bool render_init(Render *render)
     if (TTF_Init() != 0)
         return false;
 
+    /* Ask for 1080p: docked output is native, and handheld is downscaled by the
+       compositor rather than us drawing a smaller picture. */
     render->window = SDL_CreateWindow("VITRINE", SDL_WINDOWPOS_CENTERED,
-                                      SDL_WINDOWPOS_CENTERED, SCREEN_W, SCREEN_H, 0);
+                                      SDL_WINDOWPOS_CENTERED, 1920, 1080, 0);
     if (!render->window)
         return false;
 
@@ -76,12 +99,88 @@ bool render_init(Render *render)
         return false;
 
     SDL_SetRenderDrawBlendMode(render->renderer, SDL_BLENDMODE_BLEND);
+    SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "best");
+
+    render->width = SCREEN_W;
+    render->height = SCREEN_H;
+    render->scale = 1.0f;
+    SDL_GetRendererOutputSize(render->renderer, &render->width, &render->height);
+    if (render->height <= 0)
+        render->height = SCREEN_H;
+    render->scale = (float)render->height / (float)SCREEN_H;
+
+    /* Optional: the status bar simply omits the battery if this fails. */
+    g_psm_ready = R_SUCCEEDED(psmInitialize());
 
     if (!load_shared_font(render))
         return false;
 
     render->text_cache = calloc(1, sizeof(TextCache));
     return render->text_cache != NULL;
+}
+
+void render_sync_output(Render *render)
+{
+    int width = render->width;
+    int height = render->height;
+
+    if (SDL_GetRendererOutputSize(render->renderer, &width, &height) != 0 || height <= 0)
+        return;
+    if (width == render->width && height == render->height)
+        return;
+
+    diag_logf("output size %dx%d -> %dx%d", render->width, render->height,
+              width, height);
+
+    render->width = width;
+    render->height = height;
+    render->scale = (float)height / (float)SCREEN_H;
+
+    /* Every cached glyph run is the wrong size now. */
+    cache_flush(render->text_cache);
+
+    if (g_font_ready && !open_fonts(render))
+        diag_logf("font reload failed at %dx%d", width, height);
+}
+
+/*
+ * Everything above draws in a fixed 1280x720 space; this maps that onto the
+ * real output. Text is the exception - it is rasterised at native pixels and
+ * divided back down when drawn, so it stays sharp instead of being magnified.
+ */
+void render_system_status(char *clock, size_t clock_size, int *battery_percent,
+                          bool *charging)
+{
+    if (clock && clock_size) {
+        time_t now = time(NULL);
+        struct tm local;
+
+        if (localtime_r(&now, &local))
+            strftime(clock, clock_size, "%H:%M", &local);
+        else
+            snprintf(clock, clock_size, "--:--");
+    }
+
+    if (battery_percent)
+        *battery_percent = -1;
+    if (charging)
+        *charging = false;
+
+    if (!g_psm_ready)
+        return;
+
+    u32 percent = 0;
+    if (battery_percent && R_SUCCEEDED(psmGetBatteryChargePercentage(&percent)))
+        *battery_percent = (int)percent;
+
+    PsmChargerType charger = PsmChargerType_Unconnected;
+    if (charging && R_SUCCEEDED(psmGetChargerType(&charger)))
+        *charging = charger != PsmChargerType_Unconnected;
+}
+
+void render_begin_frame(Render *render)
+{
+    SDL_RenderSetScale(render->renderer, render->scale, render->scale);
 }
 
 void render_exit(Render *render)
@@ -98,6 +197,11 @@ void render_exit(Render *render)
     if (render->font_large) TTF_CloseFont(render->font_large);
     if (render->renderer)   SDL_DestroyRenderer(render->renderer);
     if (render->window)     SDL_DestroyWindow(render->window);
+
+    if (g_psm_ready) {
+        psmExit();
+        g_psm_ready = false;
+    }
 
     TTF_Quit();
     SDL_Quit();
@@ -187,7 +291,8 @@ void render_text(Render *render, TTF_Font *font, int x, int y,
     SDL_SetTextureColorMod(slot->texture, color.r, color.g, color.b);
     SDL_SetTextureAlphaMod(slot->texture, color.a);
 
-    SDL_Rect dst = { x, y, slot->w, slot->h };
+    SDL_Rect dst = { x, y, (int)(slot->w / render->scale),
+                     (int)(slot->h / render->scale) };
     SDL_RenderCopy(render->renderer, slot->texture, NULL, &dst);
 }
 
@@ -204,15 +309,18 @@ void render_text_fit(Render *render, TTF_Font *font, int x, int y, int width,
     SDL_SetTextureColorMod(slot->texture, color.r, color.g, color.b);
     SDL_SetTextureAlphaMod(slot->texture, color.a);
 
-    if (slot->w <= width) {
-        SDL_Rect dst = { x + (width - slot->w) / 2, y, slot->w, slot->h };
+    int w = (int)(slot->w / render->scale);
+    int h = (int)(slot->h / render->scale);
+
+    if (w <= width) {
+        SDL_Rect dst = { x + (width - w) / 2, y, w, h };
         SDL_RenderCopy(render->renderer, slot->texture, NULL, &dst);
         return;
     }
 
     /* Too wide: show the leading portion rather than squashing the glyphs. */
-    SDL_Rect src = { 0, 0, width, slot->h };
-    SDL_Rect dst = { x, y, width, slot->h };
+    SDL_Rect src = { 0, 0, (int)(width * render->scale), slot->h };
+    SDL_Rect dst = { x, y, width, h };
     SDL_RenderCopy(render->renderer, slot->texture, &src, &dst);
 }
 
@@ -226,8 +334,9 @@ void render_text_measure(Render *render, TTF_Font *font, const char *text,
     if (!slot)
         return;
 
-    if (width)  *width = slot->w;
-    if (height) *height = slot->h;
+    /* Reported in design space, so callers can align without knowing the scale. */
+    if (width)  *width = (int)(slot->w / render->scale);
+    if (height) *height = (int)(slot->h / render->scale);
 }
 
 void render_text_right(Render *render, TTF_Font *font, int right, int y,

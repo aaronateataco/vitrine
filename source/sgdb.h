@@ -17,6 +17,7 @@ enum { SGDB_URL_LEN = 512, SGDB_MAX_COVERS = 24 };
 
 typedef struct {
     char url[SGDB_URL_LEN];
+    char thumb[SGDB_URL_LEN];  ///< Smaller preview, used for the picker grid.
     char author[64];      ///< steam64 id of the uploader.
     int  id;
     int  score;
@@ -33,7 +34,8 @@ bool sgdb_find_game(const char *api_key, const char *name, int *out_game_id);
 
 /*
  * Lists candidate covers, preferred uploader first and higher scores next.
- * `poster` picks 600x900 grids; otherwise square icons are requested.
+ * `poster` picks 600x900 grids; otherwise square icons are requested at 512px
+ * or larger, since anything smaller looks soft on a docked 1080p display.
  */
 bool sgdb_list_covers(const char *api_key, int game_id, bool poster,
                       SgdbCoverList *out);

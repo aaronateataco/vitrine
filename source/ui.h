@@ -57,8 +57,10 @@ typedef struct {
     bool          open;
     size_t        index;
     SgdbCoverList covers;
-    SDL_Texture  *preview;
-    size_t        preview_index;
+    /* Thumbnails for the grid, downloaded a few per frame so the picker opens
+       immediately rather than after every candidate has been fetched. */
+    SDL_Texture  *thumbs[SGDB_MAX_COVERS];
+    size_t        loaded;
     char          message[128];
 } CoverPicker;
 

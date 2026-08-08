@@ -455,13 +455,19 @@ void scene_draw(Scene *scene, Render *render, const SceneCamera *camera,
     /* Let SDL finish its own batch before touching raw GL state. */
     SDL_RenderFlush(render->renderer);
 
+    /* The caller works in design coordinates; GL needs real pixels. */
+    float s = render->scale;
+    SDL_Rect px = { (int)(viewport.x * s), (int)(viewport.y * s),
+                    (int)(viewport.w * s), (int)(viewport.h * s) };
+
     int output_h = 0;
     SDL_GetRendererOutputSize(render->renderer, NULL, &output_h);
 
     /* GL's origin is bottom-left; SDL works top-down. */
-    glViewport(viewport.x, output_h - viewport.y - viewport.h, viewport.w, viewport.h);
+    int gl_y = output_h - px.y - px.h;
+    glViewport(px.x, gl_y, px.w, px.h);
     glEnable(GL_SCISSOR_TEST);
-    glScissor(viewport.x, output_h - viewport.y - viewport.h, viewport.w, viewport.h);
+    glScissor(px.x, gl_y, px.w, px.h);
 
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
@@ -481,7 +487,7 @@ void scene_draw(Scene *scene, Render *render, const SceneCamera *camera,
     float mvp[16];
 
     mat_perspective(projection, 50.0f * PI_F / 180.0f,
-                    (float)viewport.w / (float)viewport.h, 0.1f, 100.0f);
+                    (float)px.w / (float)px.h, 0.1f, 100.0f);
     mat_look_at(view, eye, camera->target);
     mat_rotate_y(model, seconds * 0.6f);
 
@@ -753,13 +759,17 @@ void scene_draw_medals(Scene *scene, Render *render, const SceneCamera *camera,
 
     SDL_RenderFlush(render->renderer);
 
+    float s = render->scale;
+    SDL_Rect px = { (int)(viewport.x * s), (int)(viewport.y * s),
+                    (int)(viewport.w * s), (int)(viewport.h * s) };
+
     int output_h = 0;
     SDL_GetRendererOutputSize(render->renderer, NULL, &output_h);
-    int gl_y = output_h - viewport.y - viewport.h;
+    int gl_y = output_h - px.y - px.h;
 
-    glViewport(viewport.x, gl_y, viewport.w, viewport.h);
+    glViewport(px.x, gl_y, px.w, px.h);
     glEnable(GL_SCISSOR_TEST);
-    glScissor(viewport.x, gl_y, viewport.w, viewport.h);
+    glScissor(px.x, gl_y, px.w, px.h);
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glDisable(GL_BLEND);
@@ -775,7 +785,7 @@ void scene_draw_medals(Scene *scene, Render *render, const SceneCamera *camera,
     float projection[16];
     float view[16];
     mat_perspective(projection, 50.0f * PI_F / 180.0f,
-                    (float)viewport.w / (float)viewport.h, 0.1f, 100.0f);
+                    (float)px.w / (float)px.h, 0.1f, 100.0f);
     mat_look_at(view, eye, camera->target);
 
     glUseProgram(scene->medal_program);
