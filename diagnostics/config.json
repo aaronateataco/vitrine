@@ -4,80 +4,8 @@
 		"show_hidden":	false,
 		"poster_tiles":	false,
 		"large_tiles":	true,
-		"theme":	2
+		"theme":	0
 	},
 	"entries":	{
-		"sdmc:/switch/green-nx.nro":	{
-			"promote":	true
-		},
-		"sdmc:/switch/Viridite Games/com.fingersoft.hillclimb.nro":	{
-			"promote":	true
-		},
-		"title:01006DC020DB8000":	{
-			"hidden":	true
-		},
-		"title:05BA7A76B2434000":	{
-			"hidden":	true
-		},
-		"title:053EEFBFD7D71000":	{
-			"hidden":	true
-		},
-		"title:05974EFACD552000":	{
-			"hidden":	true
-		},
-		"title:05A30DCD887FE000":	{
-			"hidden":	true
-		},
-		"title:05446530ACA7E000":	{
-			"hidden":	true
-		},
-		"title:05B455625A278000":	{
-			"hidden":	true
-		},
-		"title:055E0B88744E5000":	{
-			"hidden":	true
-		},
-		"title:05E0B56E172F5000":	{
-			"hidden":	true
-		},
-		"title:0547665F86EE7000":	{
-			"hidden":	true
-		},
-		"title:057BC6BE5F4F1000":	{
-			"hidden":	true
-		},
-		"title:052FE0C280E20000":	{
-			"hidden":	true
-		},
-		"title:05003A400C3DA000":	{
-			"hidden":	true
-		},
-		"sdmc:/switch/Viridite/Viridite-Translation-Core-x64.nro":	{
-			"hidden":	true
-		},
-		"sdmc:/switch/Viridite/Viridite-Translation-Core-x32.nro":	{
-			"hidden":	true
-		},
-		"sdmc:/switch/vitrine.nro":	{
-			"hidden":	true
-		},
-		"sdmc:/switch/uManager.nro":	{
-			"hidden":	true
-		},
-		"sdmc:/switch/Ultrahand-Reload/Ultrahand-Reload.nro":	{
-			"hidden":	true
-		},
-		"sdmc:/switch/tinwoo/tinwoo.nro":	{
-			"hidden":	true
-		},
-		"sdmc:/switch/PortNX/PortNX.nro":	{
-			"hidden":	true
-		},
-		"title:01006BD018B54000":	{
-			"hidden":	true
-		},
-		"shelf:Homebrew":	{
-			"hidden":	true
-		}
 	}
 }

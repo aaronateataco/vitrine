@@ -1,15 +1,13 @@
-[443672.485] VITRINE diagnostics log
-[443672.493] built Aug  8 2026 02:24:41
-[443672.498] applet mode: Application
-[443672.639] render ready
-[443673.338] scan: 102 entries across 3 shelves
-[443673.343] system Nintendo Entertainment System core=sdmc:/tico/cores/tico-fceumm.nro
-[443673.347] system Super Nintendo               core=sdmc:/tico/cores/tico-snes9x.nro
-[443673.351] system Game Boy Advance             core=sdmc:/tico/cores/tico-mgba.nro
-[443673.354] system Nintendo 64                  core=sdmc:/tico/cores/tico-mupen64plus.nro
-[443673.358] system PlayStation                  core=sdmc:/tico/cores/tico-duckstation.nro
-[443681.273] screenshot saved: sdmc:/switch/vitrine/screenshots/vitrine-000.png (1280x720)
-[443681.309] diagnostics report written: sdmc:/switch/vitrine/diagnostics.txt
-[443698.369] screenshot saved: sdmc:/switch/vitrine/screenshots/vitrine-001.png (1280x720)
-[443702.064] screenshot saved: sdmc:/switch/vitrine/screenshots/vitrine-002.png (1280x720)
-[443702.102] diagnostics report written: sdmc:/switch/vitrine/diagnostics.txt
+[444380.647] VITRINE diagnostics log
+[444380.654] built Aug  8 2026 02:36:03
+[444380.659] applet mode: Application
+[444380.770] render ready
+[444381.482] scan: 102 entries across 4 shelves
+[444381.487] system Nintendo Entertainment System core=sdmc:/tico/cores/tico-fceumm.nro
+[444381.492] system Super Nintendo               core=sdmc:/tico/cores/tico-snes9x.nro
+[444381.496] system Game Boy Advance             core=sdmc:/tico/cores/tico-mgba.nro
+[444381.501] system Nintendo 64                  core=sdmc:/tico/cores/tico-mupen64plus.nro
+[444381.505] system PlayStation                  core=sdmc:/tico/cores/tico-duckstation.nro
+[444409.707] launch kind=1 "The Legend of Zelda" path=sdmc:/tico/roms/nes/The Legend of Zelda.nes
+[444409.715] launch result 0x0
+[444409.800] clean exit
