@@ -81,6 +81,12 @@ int main(void)
     o.prefs.cover_size = 2;
     o.prefs.show_hidden = true;
 
+    /* Pinned covers persist alongside the flags. */
+    check("no cover pinned by default", overrides_cover(&o, &title)[0] == '\0');
+    overrides_set_cover(&o, &title, "https://cdn.example/grid/42.png");
+    check("cover pinned",
+          strcmp(overrides_cover(&o, &title), "https://cdn.example/grid/42.png") == 0);
+
     check("save succeeds", R_SUCCEEDED(overrides_save(&o, CONFIG)));
     check("save clears dirty", !o.dirty);
 
@@ -95,6 +101,8 @@ int main(void)
     check("poster preference persisted", loaded.prefs.poster_tiles);
     check("cover size persisted", loaded.prefs.cover_size == 2);
     check("show-hidden preference persisted", loaded.prefs.show_hidden);
+    check("pinned cover persisted",
+          strcmp(overrides_cover(&loaded, &title), "https://cdn.example/grid/42.png") == 0);
 
     /* Unhide-all clears hidden flags without disturbing promotion. */
     overrides_unhide_all(&loaded);
@@ -116,6 +124,21 @@ int main(void)
     check("default-valued entries omitted from the file",
           strstr(buf, "Zelda.gba") == NULL);
     check("file is valid json with a version", strstr(buf, "\"version\"") != NULL);
+
+    /* A pinned cover alone must keep a record alive, even with no flags set. */
+    OverrideList covered;
+    if (!overrides_init(&covered)) return 1;
+    overrides_set_cover(&covered, &rom, "https://cdn.example/icon/7.png");
+    overrides_save(&covered, CONFIG);
+
+    OverrideList recovered;
+    if (!overrides_init(&recovered)) return 1;
+    overrides_load(&recovered, CONFIG);
+    check("cover-only record survives a round trip",
+          strcmp(overrides_cover(&recovered, &rom),
+                 "https://cdn.example/icon/7.png") == 0);
+    overrides_free(&recovered);
+    overrides_free(&covered);
 
     /* A corrupt file must be rejected, not silently half-applied. */
     f = fopen(CONFIG, "wb");

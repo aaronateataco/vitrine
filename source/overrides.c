@@ -148,6 +148,29 @@ void overrides_toggle_shelf(OverrideList *overrides, const char *shelf_name)
     overrides->dirty = true;
 }
 
+void overrides_set_cover(OverrideList *overrides, const Entry *entry,
+                         const char *url)
+{
+    char key[ENTRY_PATH_LEN];
+    overrides_key(entry, key, sizeof(key));
+
+    Override *slot = ensure(overrides, key);
+    if (!slot)
+        return;
+
+    snprintf(slot->cover_url, sizeof(slot->cover_url), "%s", url ? url : "");
+    overrides->dirty = true;
+}
+
+const char *overrides_cover(const OverrideList *overrides, const Entry *entry)
+{
+    char key[ENTRY_PATH_LEN];
+    overrides_key(entry, key, sizeof(key));
+
+    const Override *found = overrides_find(overrides, key);
+    return found ? found->cover_url : "";
+}
+
 void overrides_unhide_all(OverrideList *overrides)
 {
     for (size_t i = 0; i < overrides->count; i++)
@@ -229,6 +252,11 @@ Result overrides_load(OverrideList *overrides, const char *path)
             cJSON *promote = cJSON_GetObjectItemCaseSensitive(node, "promote");
             slot->hidden = cJSON_IsTrue(hidden);
             slot->promote = cJSON_IsTrue(promote);
+
+            cJSON *cover = cJSON_GetObjectItemCaseSensitive(node, "cover");
+            if (cJSON_IsString(cover) && cover->valuestring)
+                snprintf(slot->cover_url, sizeof(slot->cover_url), "%s",
+                         cover->valuestring);
         }
     }
 
@@ -264,7 +292,7 @@ Result overrides_save(OverrideList *overrides, const char *path)
         const Override *slot = &overrides->items[i];
 
         /* Records back at their defaults carry no information; drop them. */
-        if (!slot->hidden && !slot->promote)
+        if (!slot->hidden && !slot->promote && !slot->cover_url[0])
             continue;
 
         cJSON *node = cJSON_AddObjectToObject(entries, slot->key);
@@ -275,6 +303,8 @@ Result overrides_save(OverrideList *overrides, const char *path)
             cJSON_AddBoolToObject(node, "hidden", true);
         if (slot->promote)
             cJSON_AddBoolToObject(node, "promote", true);
+        if (slot->cover_url[0])
+            cJSON_AddStringToObject(node, "cover", slot->cover_url);
     }
 
     char *text = cJSON_Print(root);

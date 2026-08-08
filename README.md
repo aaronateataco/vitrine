@@ -43,6 +43,8 @@ asserts the output is a well-formed NRO. Visual layout is the part CI cannot che
 | ZL | Move homebrew into Installed Games (and back) |
 | ZR | Show hidden items, so they can be unhidden |
 | Y | Rescan |
+| Left stick click | Screenshot |
+| Right stick click | Choose a cover for this game |
 | - | Settings |
 | + | Exit |
 
@@ -75,6 +77,12 @@ downloaded cover takes precedence over the console's own icon.
 **Cover shape decides what is requested** — Poster 2:3 fetches 600x900 grids, Square 1:1
 fetches icons. Covers uploaded by `sodasoba` are preferred over all others; remaining
 candidates are ordered by SteamGridDB's own score.
+
+**Choosing a specific cover:** highlight a game and click the **right stick**. That lists
+every candidate with its uploader and score, previews the highlighted one, and **A** pins
+your choice. A pinned cover is recorded in `config.json` and survives re-fetching, so
+bulk downloads will not overwrite it. Previews are downloaded only for the highlighted
+row, so opening the list stays fast.
 
 HTTPS needs no CA bundle: devkitPro builds curl against the console's own SSL service.
 

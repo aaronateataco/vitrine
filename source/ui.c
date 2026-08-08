@@ -314,6 +314,101 @@ static void draw_footer(Render *render, const EntryList *list,
         render_text(render, render->font, MARGIN_X, y + 74, g_theme->warn, status);
 }
 
+void ui_draw_cover_picker(Render *render, const CoverPicker *picker,
+                          const Entry *entry, const Prefs *prefs)
+{
+    enum { VISIBLE = 9, ROW_H = 36 };
+
+    theme_apply(prefs);
+
+    const int list_x = 72;
+    const int list_w = 520;
+    const int preview_x = 640;
+    const int preview_w = 560;
+    char line[192];
+
+    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, g_theme->bg);
+    render_text(render, render->font_large, list_x, 40, g_theme->text, "Choose a cover");
+    render_text_fit(render, render->font, list_x, 82, list_w, g_theme->dim, entry->name);
+
+    if (picker->covers.count == 0) {
+        render_text(render, render->font, list_x, 150, g_theme->warn,
+                    picker->message[0] ? picker->message : "No covers found");
+        render_text_right(render, render->font, SCREEN_W - 72, SCREEN_H - 56,
+                          g_theme->faint, "B  back");
+        SDL_RenderPresent(render->renderer);
+        return;
+    }
+
+    size_t start = 0;
+    if (picker->covers.count > VISIBLE) {
+        if (picker->index > VISIBLE / 2)
+            start = picker->index - VISIBLE / 2;
+        if (start + VISIBLE > picker->covers.count)
+            start = picker->covers.count - VISIBLE;
+    }
+
+    int y = 132;
+    for (size_t i = start; i < picker->covers.count && i < start + VISIBLE; i++) {
+        const SgdbCover *cover = &picker->covers.items[i];
+        bool active = (i == picker->index);
+
+        if (active)
+            render_fill(render, (SDL_Rect){ list_x - 14, y - 6, list_w + 28, ROW_H - 2 },
+                        g_theme->raised);
+
+        snprintf(line, sizeof(line), "%s%s", cover->preferred ? "* " : "  ",
+                 cover->author[0] ? cover->author : "unknown uploader");
+        render_text(render, render->font, list_x, y, active ? g_theme->text : g_theme->dim,
+                    line);
+
+        snprintf(line, sizeof(line), "%d", cover->score);
+        render_text_right(render, render->font, list_x + list_w, y, g_theme->faint, line);
+        y += ROW_H;
+    }
+
+    /* Preview pane, letterboxed into the available area. */
+    SDL_Rect frame = { preview_x, 132, preview_w, 420 };
+    render_fill(render, frame, g_theme->panel);
+
+    if (picker->preview && picker->preview_index == picker->index) {
+        int tw = 0;
+        int th = 0;
+        SDL_QueryTexture(picker->preview, NULL, NULL, &tw, &th);
+
+        if (tw > 0 && th > 0) {
+            float scale = (float)frame.w / tw;
+            float fit_h = (float)frame.h / th;
+            if (fit_h < scale)
+                scale = fit_h;
+
+            SDL_Rect dst = {
+                frame.x + (frame.w - (int)(tw * scale)) / 2,
+                frame.y + (frame.h - (int)(th * scale)) / 2,
+                (int)(tw * scale), (int)(th * scale)
+            };
+            SDL_RenderCopy(render->renderer, picker->preview, NULL, &dst);
+            render_round_corners(render, dst, dst.w / 12, g_theme->panel);
+        }
+    } else {
+        render_text_fit(render, render->font, frame.x, frame.y + frame.h / 2 - 12,
+                        frame.w, g_theme->faint, "loading preview...");
+    }
+
+    snprintf(line, sizeof(line), "%zu of %zu   *  preferred uploader",
+             picker->index + 1, picker->covers.count);
+    render_text(render, render->font, list_x, SCREEN_H - 92, g_theme->faint, line);
+
+    if (picker->message[0])
+        render_text(render, render->font, list_x, SCREEN_H - 60, g_theme->warn,
+                    picker->message);
+
+    render_text_right(render, render->font, SCREEN_W - 72, SCREEN_H - 60,
+                      g_theme->faint, "A  use this cover        B  back");
+
+    SDL_RenderPresent(render->renderer);
+}
+
 void ui_draw_settings(Render *render, const Settings *settings, const Prefs *prefs,
                       const EntryList *list, const ShelfList *shelves,
                       const OverrideList *overrides, const char *core_note)

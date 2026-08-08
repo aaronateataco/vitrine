@@ -11,8 +11,9 @@
  */
 typedef struct {
     char key[ENTRY_PATH_LEN];
-    bool hidden;    ///< Omitted from every shelf unless "show hidden" is on.
-    bool promote;   ///< Homebrew that should sit with the installed games.
+    bool hidden;         ///< Omitted from every shelf unless "show hidden" is on.
+    bool promote;        ///< Homebrew that should sit with the installed games.
+    char cover_url[512]; ///< Pinned SteamGridDB cover; empty means auto-pick.
 } Override;
 
 /// Global display preferences, persisted alongside the per-entry overrides.
@@ -49,6 +50,13 @@ bool   overrides_promoted(const OverrideList *overrides, const Entry *entry);
 /// Both toggles create the record on demand and mark the list dirty.
 void   overrides_toggle_hidden(OverrideList *overrides, const Entry *entry);
 void   overrides_toggle_promote(OverrideList *overrides, const Entry *entry);
+
+/// Pins a specific cover for an entry, so re-fetching will not change it.
+void   overrides_set_cover(OverrideList *overrides, const Entry *entry,
+                           const char *url);
+
+/// Empty string when no cover has been pinned.
+const char *overrides_cover(const OverrideList *overrides, const Entry *entry);
 
 /// Clears every hidden flag; the promote flags are left alone.
 void   overrides_unhide_all(OverrideList *overrides);

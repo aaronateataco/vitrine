@@ -3,6 +3,8 @@
 #include <string.h>
 #include <sys/stat.h>
 
+#include <SDL2/SDL_image.h>
+
 #include "config.h"
 #include "diag.h"
 #include "icons.h"
@@ -120,7 +122,8 @@ static void fetch_shelf_covers(Library *lib, size_t shelf_index, Render *render,
                          &lib->overrides, core_note);
 
         if (sgdb_fetch_for_entry(prefs->sgdb_key, entry, prefs->poster_tiles,
-                                 COVERS_DIR, NULL, NULL, 0))
+                                 COVERS_DIR,
+                                 overrides_cover(&lib->overrides, entry), NULL, 0))
             got++;
     }
 
@@ -129,6 +132,79 @@ static void fetch_shelf_covers(Library *lib, size_t shelf_index, Render *render,
              got, skipped);
     diag_logf("cover fetch for \"%s\": %zu new, %zu cached",
               shelf->name, got, skipped);
+}
+
+/*
+ * Cover picker. The candidate list is cheap, but each preview is a download, so
+ * previews are fetched only for whatever is highlighted.
+ */
+static void picker_close(CoverPicker *picker)
+{
+    if (picker->preview) {
+        SDL_DestroyTexture(picker->preview);
+        picker->preview = NULL;
+    }
+    picker->open = false;
+    picker->covers.count = 0;
+    picker->index = 0;
+    picker->message[0] = '\0';
+}
+
+static void picker_open(CoverPicker *picker, Library *lib, size_t shelf_index,
+                        char *status, size_t status_size)
+{
+    const Prefs *prefs = &lib->overrides.prefs;
+
+    picker_close(picker);
+
+    if (!prefs->sgdb_key[0]) {
+        snprintf(status, status_size, "set a SteamGridDB API key first");
+        return;
+    }
+    if (shelf_index >= lib->shelves.count) {
+        return;
+    }
+    if (!net_init()) {
+        snprintf(status, status_size, "network unavailable");
+        return;
+    }
+
+    const Shelf *shelf = &lib->shelves.items[shelf_index];
+    const Entry *entry = &lib->list.items[shelf->items[shelf->cursor]];
+
+    picker->open = true;
+    picker->preview_index = (size_t)-1;
+
+    int game_id = 0;
+    if (!sgdb_find_game(prefs->sgdb_key, entry->name, &game_id)) {
+        snprintf(picker->message, sizeof(picker->message),
+                 "no SteamGridDB match for this title");
+        return;
+    }
+
+    if (!sgdb_list_covers(prefs->sgdb_key, game_id, prefs->poster_tiles,
+                          &picker->covers))
+        snprintf(picker->message, sizeof(picker->message), "no covers returned");
+}
+
+static void picker_preview(CoverPicker *picker, Render *render)
+{
+    if (picker->covers.count == 0 || picker->preview_index == picker->index)
+        return;
+
+    if (picker->preview) {
+        SDL_DestroyTexture(picker->preview);
+        picker->preview = NULL;
+    }
+
+    char temp[512];
+    snprintf(temp, sizeof(temp), "%s/.preview.png", COVERS_DIR);
+    mkdir(COVERS_DIR, 0777);
+
+    if (net_download(picker->covers.items[picker->index].url, temp))
+        picker->preview = IMG_LoadTexture(render->renderer, temp);
+
+    picker->preview_index = picker->index;
 }
 
 /* Applet mode cannot fit a core, so refuse up front instead of crashing later. */
@@ -206,6 +282,8 @@ int main(int argc, char **argv)
     ui_state_init(&ui);
 
     Settings settings = { false, 0 };
+    CoverPicker picker;
+    memset(&picker, 0, sizeof(picker));
 
     /* Surfaced in Settings: a missing core is the usual reason a ROM will not
        start, and it is otherwise invisible until you press A. */
@@ -230,6 +308,57 @@ int main(int argc, char **argv)
 
         if (down & HidNpadButton_Plus)
             break;
+
+        if (picker.open) {
+            if (down & (HidNpadButton_B | HidNpadButton_Minus)) {
+                picker_close(&picker);
+            } else if (picker.covers.count > 0) {
+                if (down & HidNpadButton_AnyUp)
+                    picker.index = picker.index ? picker.index - 1
+                                                : picker.covers.count - 1;
+                if (down & HidNpadButton_AnyDown)
+                    picker.index = (picker.index + 1) % picker.covers.count;
+
+                if (down & HidNpadButton_A) {
+                    const Shelf *shelf = &lib.shelves.items[shelf_index];
+                    const Entry *entry = &lib.list.items[shelf->items[shelf->cursor]];
+                    const char *url = picker.covers.items[picker.index].url;
+
+                    /* Pin it, then fetch through the normal path so the cache
+                       filename matches what the library will look for. */
+                    overrides_set_cover(&lib.overrides, entry, url);
+                    mkdir(CONFIG_DIR, 0777);
+                    overrides_save(&lib.overrides, CONFIG_PATH);
+
+                    if (sgdb_fetch_for_entry(lib.overrides.prefs.sgdb_key, entry,
+                                             lib.overrides.prefs.poster_tiles,
+                                             COVERS_DIR, url, NULL, 0)) {
+                        icons_flush(icons);
+                        snprintf(status, sizeof(status), "cover locked for %s",
+                                 entry->name);
+                        picker_close(&picker);
+                    } else {
+                        snprintf(picker.message, sizeof(picker.message),
+                                 "download failed");
+                    }
+                }
+            }
+
+            if (picker.open) {
+                picker_preview(&picker, &render);
+
+                const Shelf *shelf = &lib.shelves.items[shelf_index];
+                const Entry *entry = &lib.list.items[shelf->items[shelf->cursor]];
+                ui_draw_cover_picker(&render, &picker, entry,
+                                     &lib.overrides.prefs);
+            }
+            continue;
+        }
+
+        if ((down & HidNpadButton_StickR) && lib.shelves.count > 0) {
+            picker_open(&picker, &lib, shelf_index, status, sizeof(status));
+            continue;
+        }
 
         if (settings.open) {
             size_t total = ui_settings_count(&lib.shelves);
@@ -425,6 +554,8 @@ int main(int argc, char **argv)
     }
 
 done:
+    picker_close(&picker);
+
     if (lib.overrides.dirty)
         overrides_save(&lib.overrides, CONFIG_PATH);
 

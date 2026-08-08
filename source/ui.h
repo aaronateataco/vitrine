@@ -3,6 +3,7 @@
 #include "entry.h"
 #include "icons.h"
 #include "render.h"
+#include "sgdb.h"
 #include "shelves.h"
 
 /// Animation state. Targets are recomputed each frame and eased toward.
@@ -43,6 +44,22 @@ typedef struct {
 size_t      ui_settings_count(const ShelfList *shelves);
 int         ui_theme_count(void);
 const char *ui_theme_name(int index);
+
+/*
+ * Cover picker. Candidates are listed with their uploader; the highlighted one
+ * is previewed, downloaded on demand so opening the list stays fast.
+ */
+typedef struct {
+    bool          open;
+    size_t        index;
+    SgdbCoverList covers;
+    SDL_Texture  *preview;
+    size_t        preview_index;
+    char          message[128];
+} CoverPicker;
+
+void ui_draw_cover_picker(Render *render, const CoverPicker *picker,
+                          const Entry *entry, const Prefs *prefs);
 
 void ui_draw_settings(Render *render, const Settings *settings, const Prefs *prefs,
                       const EntryList *list, const ShelfList *shelves,
