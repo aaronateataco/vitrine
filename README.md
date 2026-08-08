@@ -214,14 +214,34 @@ Pressing **B** on a shelf opens a 3D room. The GLES foundation is in: a lit,
 orbitable placeholder solid rendered into the same context SDL already owns, with
 D-pad orbit and L/R zoom.
 
-Model loading is next. `franchises.json` will map a collection to a **local model path
-on your SD card**, the **camera position and zoom** for that room, and the **source URL**
-for attribution.
+`franchises.json` (written to `sdmc:/switch/vitrine/` on first run) maps a shelf to its
+room:
 
-VITRINE will not re-host 3D models. Most models on sites like Sketchfab are not licensed
-for redistribution, and routing around a download restriction does not change that — so
-the repository carries camera coordinates and a link, and the model file itself is one you
-supply. The room renders the same either way.
+```json
+{
+  "version": 1,
+  "rooms": [
+    {
+      "match": "Game Boy Advance",
+      "title": "GBA Room",
+      "model": "sdmc:/switch/vitrine/models/gba-room.glb",
+      "source": "https://sketchfab.com/3d-models/example",
+      "credit": "Model by Example Author, CC-BY 4.0",
+      "camera": { "yaw": 0.6, "pitch": 0.3, "distance": 6.0, "target": [0, 1, 0] }
+    }
+  ]
+}
+```
+
+`match` is the shelf name; the camera framing is applied when the room opens, and
+`credit`/`source` are displayed inside it. Only `match` is required — everything else
+falls back to defaults.
+
+**VITRINE re-hosts no 3D models.** Most published models are not licensed for
+redistribution, and routing around a download restriction would not change that. So the
+file carries camera coordinates and a **link**, and `model` points at a file **you** put
+on your SD card. Model loading itself is the next step; the framing, attribution and
+lookup are already in.
 
 ## Building
 

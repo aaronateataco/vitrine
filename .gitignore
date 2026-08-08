@@ -9,6 +9,7 @@ tests/test_homebrew
 tests/test_config
 tests/test_shelves
 tests/test_overrides
+tests/test_rooms
 tests/testdata-*
 
 # fetch-cores.sh working directories

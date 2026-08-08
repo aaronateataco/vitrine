@@ -14,6 +14,7 @@
 #include "launch.h"
 #include "overrides.h"
 #include "render.h"
+#include "rooms.h"
 #include "roms.h"
 #include "scene.h"
 #include "shelves.h"
@@ -27,6 +28,7 @@
 #define REPORT_PATH   CONFIG_DIR "/diagnostics.txt"
 #define SHOTS_DIR     CONFIG_DIR "/screenshots"
 #define COVERS_DIR    CONFIG_DIR "/covers"
+#define ROOMS_PATH    CONFIG_DIR "/franchises.json"
 #define PAGE_JUMP      6
 
 typedef struct {
@@ -298,6 +300,16 @@ int main(int argc, char **argv)
     bool room_open = false;
     u64 room_frames = 0;
 
+    RoomList rooms;
+    if (rooms_init(&rooms)) {
+        if (R_FAILED(rooms_load(&rooms, ROOMS_PATH))) {
+            mkdir(CONFIG_DIR, 0777);
+            rooms_write_example(ROOMS_PATH);
+            rooms_load(&rooms, ROOMS_PATH);
+        }
+        diag_logf("rooms: %zu defined", rooms.count);
+    }
+
     CoverPicker picker;
     memset(&picker, 0, sizeof(picker));
 
@@ -347,14 +359,29 @@ int main(int argc, char **argv)
             scene_camera_orbit(&camera, dyaw, dpitch, dzoom);
 
             const Shelf *shelf = &lib.shelves.items[shelf_index];
+            const Room *room = rooms_find(&rooms, shelf->name);
+
             char subtitle[96];
             snprintf(subtitle, sizeof(subtitle), "%zu items", shelf->count);
+
+            /* Attribution for a model the user supplied themselves. */
+            char credit[320];
+            if (room && room->credit[0] && room->source[0])
+                snprintf(credit, sizeof(credit), "%s  -  %s", room->credit, room->source);
+            else if (room && room->credit[0])
+                snprintf(credit, sizeof(credit), "%s", room->credit);
+            else if (room && room->source[0])
+                snprintf(credit, sizeof(credit), "%s", room->source);
+            else
+                snprintf(credit, sizeof(credit),
+                         "No room defined for this shelf - see franchises.json");
 
             SDL_Rect viewport = ui_room_begin(&render, &lib.overrides.prefs);
             scene_draw(scene, &render, &camera, viewport,
                        (float)room_frames / 60.0f);
-            ui_room_end(&render, &lib.overrides.prefs, shelf->name, subtitle,
-                        "Placeholder model - franchises.json wiring is next");
+            ui_room_end(&render, &lib.overrides.prefs,
+                        room && room->title[0] ? room->title : shelf->name,
+                        subtitle, credit);
             room_frames++;
             continue;
         }
@@ -366,6 +393,16 @@ int main(int argc, char **argv)
                 room_open = true;
                 room_frames = 0;
                 scene_camera_reset(&camera);
+
+                /* Framing comes from franchises.json when the shelf has a room. */
+                const Shelf *shelf = &lib.shelves.items[shelf_index];
+                const Room *room = rooms_find(&rooms, shelf->name);
+                if (room) {
+                    camera.yaw = room->camera.yaw;
+                    camera.pitch = room->camera.pitch;
+                    camera.distance = room->camera.distance;
+                    memcpy(camera.target, room->camera.target, sizeof(camera.target));
+                }
             }
             continue;
         }
@@ -427,14 +464,29 @@ int main(int argc, char **argv)
             scene_camera_orbit(&camera, dyaw, dpitch, dzoom);
 
             const Shelf *shelf = &lib.shelves.items[shelf_index];
+            const Room *room = rooms_find(&rooms, shelf->name);
+
             char subtitle[96];
             snprintf(subtitle, sizeof(subtitle), "%zu items", shelf->count);
+
+            /* Attribution for a model the user supplied themselves. */
+            char credit[320];
+            if (room && room->credit[0] && room->source[0])
+                snprintf(credit, sizeof(credit), "%s  -  %s", room->credit, room->source);
+            else if (room && room->credit[0])
+                snprintf(credit, sizeof(credit), "%s", room->credit);
+            else if (room && room->source[0])
+                snprintf(credit, sizeof(credit), "%s", room->source);
+            else
+                snprintf(credit, sizeof(credit),
+                         "No room defined for this shelf - see franchises.json");
 
             SDL_Rect viewport = ui_room_begin(&render, &lib.overrides.prefs);
             scene_draw(scene, &render, &camera, viewport,
                        (float)room_frames / 60.0f);
-            ui_room_end(&render, &lib.overrides.prefs, shelf->name, subtitle,
-                        "Placeholder model - franchises.json wiring is next");
+            ui_room_end(&render, &lib.overrides.prefs,
+                        room && room->title[0] ? room->title : shelf->name,
+                        subtitle, credit);
             room_frames++;
             continue;
         }
@@ -446,6 +498,16 @@ int main(int argc, char **argv)
                 room_open = true;
                 room_frames = 0;
                 scene_camera_reset(&camera);
+
+                /* Framing comes from franchises.json when the shelf has a room. */
+                const Shelf *shelf = &lib.shelves.items[shelf_index];
+                const Room *room = rooms_find(&rooms, shelf->name);
+                if (room) {
+                    camera.yaw = room->camera.yaw;
+                    camera.pitch = room->camera.pitch;
+                    camera.distance = room->camera.distance;
+                    memcpy(camera.target, room->camera.target, sizeof(camera.target));
+                }
             }
             continue;
         }
@@ -661,6 +723,7 @@ int main(int argc, char **argv)
 
 done:
     picker_close(&picker);
+    rooms_free(&rooms);
     scene_destroy(scene);
 
     if (lib.overrides.dirty)
