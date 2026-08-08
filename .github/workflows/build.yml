@@ -33,10 +33,27 @@ jobs:
       # keeps checkout and the release steps on the host runner.
       # The mount point must not be named "build" - devkitPro's Makefile uses
       # the directory name to tell its outer and inner invocations apart.
+      # Job logs need admin rights to read over the API, so surface the tail of
+      # a failed build as an annotation, which does not.
       - name: Build with devkitA64
         run: |
-          docker run --rm -v "$PWD":/project -w /project \
-            docker.io/devkitpro/devkita64:latest make
+          set -o pipefail
+          if ! docker run --rm -v "$PWD":/project -w /project \
+                 docker.io/devkitpro/devkita64:latest make 2>&1 | tee build.log; then
+            summary=$(grep -iE "error|undefined reference|No such file" build.log \
+                      | head -n 12 | tr '\n' ' ~ ' | cut -c1-1200)
+            [ -z "$summary" ] && summary=$(tail -n 12 build.log | tr '\n' ' ~ ' | cut -c1-1200)
+            echo "::error title=devkitA64 build failed::$summary"
+            exit 1
+          fi
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
+          if-no-files-found: ignore
 
       - name: Verify the NRO is well formed
         run: |
