@@ -136,9 +136,17 @@ void shelves_build(ShelfList *shelves, const EntryList *list, const SystemList *
             shelf_push(shelf, i);
     }
 
-    /* Drop empties in place, preserving relative order. */
+    /* Mark hidden shelves, then drop empties and (unless revealing) hidden. */
+    for (size_t i = 0; i < shelves->count; i++)
+        shelves->items[i].hidden =
+            overrides && overrides_shelf_hidden(overrides, shelves->items[i].name);
+
     size_t out = 0;
     for (size_t i = 0; i < shelves->count; i++) {
+        if (shelves->items[i].hidden && !show_hidden) {
+            shelf_free(&shelves->items[i]);
+            continue;
+        }
         if (shelves->items[i].count == 0) {
             shelf_free(&shelves->items[i]);
             continue;

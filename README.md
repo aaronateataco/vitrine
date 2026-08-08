@@ -46,6 +46,11 @@ asserts the output is a well-formed NRO. Visual layout is the part CI cannot che
 | - | Settings |
 | + | Exit |
 
+Settings covers **Appearance** (theme, cover shape, cover size), **Library** (show hidden,
+rescan, unhide everything) and **Shelves** — a per-platform visibility toggle, so
+Homebrew or any console can be switched off entirely. Themes: Vitrine Dark, Switch 2
+(near-black with Nintendo red), and Daylight.
+
 The footer shows only **A play** and **- settings**; the full reference lives in the
 Settings overlay, because ten bindings do not fit along a 720p footer.
 
@@ -112,13 +117,34 @@ core = sdmc:/tico/cores/tico-mgba.nro             # a tico install, fallback
 This is what keeps VITRINE independent. It reads tico's ROM folders and can borrow its
 cores, but needs neither.
 
-**Why exiting a game returns you to tico:** tico's core NROs appear to chain-load back to
-`tico.nro` when they exit, so borrowing them inherits that behaviour. Building your own
-cores with `tools/fetch-cores.sh` and putting them in
-`sdmc:/switch/vitrine/cores/` returns you to VITRINE instead. Nothing in VITRINE can
-override where somebody else's binary decides to go next.
+### Exiting a game returns me to tico
 
-To build your own, `tools/fetch-cores.sh` clones and builds from the public
+hbloader's default return target is **`sdmc:/hbmenu.nro`**. When a core exits without
+naming a successor, that is where the console goes. If a tico install has replaced
+`hbmenu.nro` with itself, *every* homebrew exit lands in tico no matter which cores you
+use — nothing VITRINE does can change hbloader's default.
+
+Check first: look at `sdmc:/hbmenu.nro` and see whether it is tico. Then either
+
+- **make VITRINE the shell** — back up `hbmenu.nro`, copy `vitrine.nro` over it, and every
+  exit returns here (VITRINE already lists homebrew, so it can fill that role), or
+- **restore the real hbmenu** from the [nx-hbmenu releases](https://github.com/switchbrew/nx-hbmenu/releases).
+
+If `hbmenu.nro` is *not* tico, then the cores are chain-loading back to it themselves, and
+the fix is different cores — see below.
+
+**Prebuilt cores, the easy route.** libretro's official buildbot publishes Switch core
+NROs, which return to whatever launched them:
+
+```sh
+./tools/get-cores.sh --list   # system -> core mapping
+./tools/get-cores.sh          # download into ./cores/
+```
+
+Copy those to `sdmc:/switch/vitrine/cores/`. It covers 14 systems; GameCube, Wii, 3DS and
+Saturn are not on the buildbot and still need a tico install.
+
+To build from source instead, `tools/fetch-cores.sh` clones and builds from the public
 `ticohq/tico-*` forks:
 
 ```sh

@@ -16,6 +16,7 @@ typedef struct {
     size_t  count;
     size_t  capacity;
     size_t  cursor;       ///< Selected column within this shelf.
+    bool    hidden;       ///< Set when this shelf is only shown by "show hidden".
     float   scroll_x;     ///< Animated, in pixels.
 } Shelf;
 

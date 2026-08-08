@@ -156,33 +156,50 @@ int main(int argc, char **argv)
             break;
 
         if (settings.open) {
+            size_t total = ui_settings_count(&lib.shelves);
+
             if (down & (HidNpadButton_Minus | HidNpadButton_B)) {
                 settings.open = false;
             } else if (down & HidNpadButton_AnyUp) {
-                settings.row = settings.row ? settings.row - 1 : Setting_Count - 1;
+                settings.row = settings.row ? settings.row - 1 : total - 1;
             } else if (down & HidNpadButton_AnyDown) {
-                settings.row = (settings.row + 1) % Setting_Count;
+                settings.row = (settings.row + 1) % total;
             } else if (down & HidNpadButton_A) {
                 Prefs *prefs = &lib.overrides.prefs;
 
-                switch (settings.row) {
-                    case Setting_PosterTiles:
-                        prefs->poster_tiles = !prefs->poster_tiles;
-                        break;
-                    case Setting_LargeTiles:
-                        prefs->large_tiles = !prefs->large_tiles;
-                        break;
-                    case Setting_ShowHidden:
-                        prefs->show_hidden = !prefs->show_hidden;
+                if (settings.row >= Setting_Fixed) {
+                    size_t index = settings.row - Setting_Fixed;
+
+                    if (index < lib.shelves.count) {
+                        /* Copy the name first: regrouping invalidates the shelf. */
+                        char name[SHELF_NAME_LEN];
+                        snprintf(name, sizeof(name), "%s", lib.shelves.items[index].name);
+                        overrides_toggle_shelf(&lib.overrides, name);
                         library_regroup(&lib);
-                        break;
-                    case Setting_UnhideAll:
-                        overrides_unhide_all(&lib.overrides);
-                        library_regroup(&lib);
-                        break;
-                    default:
-                        rescan(&lib, status, sizeof(status));
-                        break;
+                    }
+                } else {
+                    switch (settings.row) {
+                        case Setting_Theme:
+                            prefs->theme = (prefs->theme + 1) % ui_theme_count();
+                            break;
+                        case Setting_PosterTiles:
+                            prefs->poster_tiles = !prefs->poster_tiles;
+                            break;
+                        case Setting_LargeTiles:
+                            prefs->large_tiles = !prefs->large_tiles;
+                            break;
+                        case Setting_ShowHidden:
+                            prefs->show_hidden = !prefs->show_hidden;
+                            library_regroup(&lib);
+                            break;
+                        case Setting_UnhideAll:
+                            overrides_unhide_all(&lib.overrides);
+                            library_regroup(&lib);
+                            break;
+                        default:
+                            rescan(&lib, status, sizeof(status));
+                            break;
+                    }
                 }
 
                 lib.overrides.dirty = true;
@@ -194,8 +211,13 @@ int main(int argc, char **argv)
                 ui_state_bump(&ui);
             }
 
+            /* Hiding a shelf shortens the list under the cursor. */
+            total = ui_settings_count(&lib.shelves);
+            if (settings.row >= total)
+                settings.row = total - 1;
+
             ui_draw_settings(&render, &settings, &lib.overrides.prefs, &lib.list,
-                             &lib.shelves, core_note);
+                             &lib.shelves, &lib.overrides, core_note);
             continue;
         }
 

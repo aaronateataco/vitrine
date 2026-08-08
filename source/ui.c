@@ -14,15 +14,58 @@
 #define VIEW_BOTTOM (SCREEN_H - FOOTER_H)
 #define SELECT_SCALE 1.10f
 
-static const SDL_Color COL_BG      = {  14,  16,  20, 255 };
-static const SDL_Color COL_PANEL   = {  26,  30,  38, 255 };
-static const SDL_Color COL_RAISED  = {  38,  46,  62, 255 };
-static const SDL_Color COL_LINE    = {  52,  58,  74, 255 };
-static const SDL_Color COL_TEXT    = { 240, 242, 246, 255 };
-static const SDL_Color COL_DIM     = { 138, 144, 160, 255 };
-static const SDL_Color COL_FAINT   = {  74,  80,  96, 255 };
-static const SDL_Color COL_ACCENT  = {  90, 169, 255, 255 };
-static const SDL_Color COL_WARN    = { 236, 130, 130, 255 };
+/*
+ * Themes. "Switch 2" is an approximation of the console's look - near-black
+ * with Nintendo red - not a replica of any Nintendo asset; only colour values
+ * are used here.
+ */
+typedef struct {
+    const char *name;
+    SDL_Color bg, panel, raised, line, text, dim, faint, accent, warn;
+} Theme;
+
+static const Theme THEMES[] = {
+    { "Vitrine Dark",
+      {  14,  16,  20, 255 }, {  26,  30,  38, 255 }, {  38,  46,  62, 255 },
+      {  52,  58,  74, 255 }, { 240, 242, 246, 255 }, { 138, 144, 160, 255 },
+      {  74,  80,  96, 255 }, {  90, 169, 255, 255 }, { 236, 130, 130, 255 } },
+
+    { "Switch 2",
+      {  10,  10,  12, 255 }, {  22,  22,  26, 255 }, {  40,  40,  46, 255 },
+      {  54,  54,  60, 255 }, { 255, 255, 255, 255 }, { 154, 154, 162, 255 },
+      {  96,  96, 104, 255 }, { 230,   0,  18, 255 }, { 255, 140, 140, 255 } },
+
+    { "Daylight",
+      { 242, 243, 246, 255 }, { 255, 255, 255, 255 }, { 224, 228, 236, 255 },
+      { 204, 209, 219, 255 }, {  24,  26,  32, 255 }, {  92,  98, 112, 255 },
+      { 142, 148, 162, 255 }, {   0, 112, 224, 255 }, { 186,  40,  40, 255 } },
+};
+
+#define THEME_COUNT ((int)(sizeof(THEMES) / sizeof(THEMES[0])))
+
+static const Theme *g_theme = &THEMES[0];
+
+int ui_theme_count(void) { return THEME_COUNT; }
+
+const char *ui_theme_name(int index)
+{
+    if (index < 0 || index >= THEME_COUNT)
+        index = 0;
+    return THEMES[index].name;
+}
+
+static void theme_apply(const Prefs *prefs)
+{
+    int index = prefs->theme;
+    if (index < 0 || index >= THEME_COUNT)
+        index = 0;
+    g_theme = &THEMES[index];
+}
+
+size_t ui_settings_count(const ShelfList *shelves)
+{
+    return Setting_Fixed + shelves->count;
+}
 
 /*
  * Tile geometry follows the display preferences. Posters use the 2:3 ratio that
@@ -114,21 +157,26 @@ static void draw_tile(Render *render, IconCache *icons, const Entry *entry,
         const char *label = entry->author[0] ? entry->author : entry->name;
         render_fill(render, rect, plate_color(label));
         render_text_fit(render, render->font, rect.x, rect.y + h / 2 - 14, w,
-                        COL_TEXT, label);
+                        g_theme->text, label);
     }
 
     if (hidden) {
         /* Only visible in "show hidden" mode, so it must read as excluded. */
-        SDL_Color veil = { 14, 16, 20, 170 };
+        SDL_Color veil = g_theme->bg;
+        veil.a = 170;
         render_fill(render, rect, veil);
-        render_text_fit(render, render->font, rect.x, rect.y + 6, w, COL_WARN,
+        render_text_fit(render, render->font, rect.x, rect.y + 6, w, g_theme->warn,
                         "hidden");
     }
 
     if (selected)
-        render_outline(render, rect, 3, COL_ACCENT);
-    else if (!hidden)
-        render_fill(render, rect, (SDL_Color){ 14, 16, 20, 110 });
+        render_outline(render, rect, 3, g_theme->accent);
+    else if (!hidden) {
+        /* Recede unselected tiles rather than dimming the whole shelf. */
+        SDL_Color veil = g_theme->bg;
+        veil.a = 110;
+        render_fill(render, rect, veil);
+    }
 }
 
 static void draw_shelf(Render *render, IconCache *icons, const EntryList *list,
@@ -140,14 +188,14 @@ static void draw_shelf(Render *render, IconCache *icons, const EntryList *list,
     int h = tile_h(prefs);
     int pitch = w + TILE_GAP;
 
-    render_text(render, render->font, MARGIN_X, y, active ? COL_TEXT : COL_DIM,
+    render_text(render, render->font, MARGIN_X, y, active ? g_theme->text : g_theme->dim,
                 shelf->name);
 
     snprintf(meta, sizeof(meta), "%zu", shelf->count);
-    render_text_right(render, render->font, SCREEN_W - MARGIN_X, y + 3, COL_FAINT, meta);
+    render_text_right(render, render->font, SCREEN_W - MARGIN_X, y + 3, g_theme->faint, meta);
 
     if (active)
-        render_fill(render, (SDL_Rect){ MARGIN_X - 14, y + 2, 4, 20 }, COL_ACCENT);
+        render_fill(render, (SDL_Rect){ MARGIN_X - 14, y + 2, 4, 20 }, g_theme->accent);
 
     int strip_y = y + SHELF_LABEL;
     int visible_w = SCREEN_W - 2 * MARGIN_X;
@@ -179,7 +227,7 @@ static void draw_shelf(Render *render, IconCache *icons, const EntryList *list,
     SDL_RenderSetClipRect(render->renderer, NULL);
 
     /* Fade the strip into the margins so clipped tiles do not end abruptly. */
-    SDL_Color edge = COL_BG;
+    SDL_Color edge = g_theme->bg;
     render_edge_fade(render, (SDL_Rect){ 0, strip_y - 12, MARGIN_X - 12, h + 24 },
                      edge, false);
     render_edge_fade(render, (SDL_Rect){ SCREEN_W - MARGIN_X + 12, strip_y - 12,
@@ -190,13 +238,13 @@ static void draw_header(Render *render, const EntryList *list, const ShelfList *
 {
     char line[128];
 
-    render_text(render, render->font_large, MARGIN_X, 22, COL_TEXT, "VITRINE");
+    render_text(render, render->font_large, MARGIN_X, 22, g_theme->text, "VITRINE");
 
     snprintf(line, sizeof(line), "%zu items across %zu shelves",
              list->count, shelves->count);
-    render_text(render, render->font, MARGIN_X + 190, 30, COL_FAINT, line);
+    render_text(render, render->font, MARGIN_X + 190, 30, g_theme->faint, line);
 
-    render_fill(render, (SDL_Rect){ 0, HEADER_H - 2, SCREEN_W, 1 }, COL_PANEL);
+    render_fill(render, (SDL_Rect){ 0, HEADER_H - 2, SCREEN_W, 1 }, g_theme->panel);
 }
 
 static void draw_footer(Render *render, const EntryList *list,
@@ -206,11 +254,11 @@ static void draw_footer(Render *render, const EntryList *list,
     char line[256];
     int y = VIEW_BOTTOM + 16;
 
-    render_fill(render, (SDL_Rect){ 0, VIEW_BOTTOM, SCREEN_W, FOOTER_H }, COL_PANEL);
+    render_fill(render, (SDL_Rect){ 0, VIEW_BOTTOM, SCREEN_W, FOOTER_H }, g_theme->panel);
 
     if (shelves->count == 0) {
-        render_text(render, render->font_large, MARGIN_X, y, COL_DIM, "Nothing found");
-        render_text(render, render->font, MARGIN_X, y + 40, COL_FAINT,
+        render_text(render, render->font_large, MARGIN_X, y, g_theme->dim, "Nothing found");
+        render_text(render, render->font, MARGIN_X, y + 40, g_theme->faint,
                     "Check systems.ini, then press Y to rescan");
         return;
     }
@@ -218,7 +266,7 @@ static void draw_footer(Render *render, const EntryList *list,
     const Shelf *shelf = &shelves->items[shelf_index];
     const Entry *entry = &list->items[shelf->items[shelf->cursor]];
 
-    render_text(render, render->font_large, MARGIN_X, y, COL_TEXT, entry->name);
+    render_text(render, render->font_large, MARGIN_X, y, g_theme->text, entry->name);
 
     const char *kind = entry->kind == EntryKind_Homebrew ? "Homebrew"
                      : entry->kind == EntryKind_Game     ? "ROM"
@@ -230,109 +278,137 @@ static void draw_footer(Render *render, const EntryList *list,
         snprintf(line, sizeof(line), "%s   %zu of %zu",
                  kind, shelf->cursor + 1, shelf->count);
 
-    render_text(render, render->font, MARGIN_X, y + 42, COL_DIM, line);
+    render_text(render, render->font, MARGIN_X, y + 42, g_theme->dim, line);
 
     /* Right-aligned from a measured width, so it can never run off screen. */
-    render_text_right(render, render->font, SCREEN_W - MARGIN_X, y + 42, COL_FAINT,
+    render_text_right(render, render->font, SCREEN_W - MARGIN_X, y + 42, g_theme->faint,
                       "A  play        -  settings");
 
     if (status && status[0])
-        render_text(render, render->font, MARGIN_X, y + 70, COL_WARN, status);
+        render_text(render, render->font, MARGIN_X, y + 70, g_theme->warn, status);
 }
 
 void ui_draw_settings(Render *render, const Settings *settings, const Prefs *prefs,
                       const EntryList *list, const ShelfList *shelves,
-                      const char *core_note)
+                      const OverrideList *overrides, const char *core_note)
 {
-    static const char *controls[][2] = {
-        { "D-pad left / right", "Move within a shelf" },
-        { "D-pad up / down",    "Change shelf" },
-        { "L / R",              "Page within a shelf" },
-        { "A",                  "Launch" },
-        { "X",                  "Hide or unhide" },
-        { "ZL",                 "Move homebrew to Installed Games" },
-        { "ZR",                 "Reveal hidden items" },
-        { "Y",                  "Rescan library" },
-        { "+",                  "Exit" },
-    };
+    enum { VISIBLE_ROWS = 11, ROW_H = 34 };
 
-    struct { SettingRow row; const char *label; const char *value; } items[Setting_Count] = {
-        { Setting_PosterTiles, "Cover shape",       prefs->poster_tiles ? "Poster 2:3" : "Square 1:1" },
-        { Setting_LargeTiles,  "Cover size",        prefs->large_tiles ? "Large" : "Standard" },
-        { Setting_ShowHidden,  "Show hidden items", prefs->show_hidden ? "On" : "Off" },
-        { Setting_Rescan,      "Rescan library",    "" },
-        { Setting_UnhideAll,   "Unhide everything", "" },
-    };
+    theme_apply(prefs);
 
-    const int panel_w = 800;
+    const int panel_w = 820;
     const int panel_x = (SCREEN_W - panel_w) / 2;
     const int x = panel_x + 40;
     const int right = panel_x + panel_w - 40;
+
+    size_t total = ui_settings_count(shelves);
     char line[192];
 
     /* Dim the library rather than replacing it, so context is kept. */
-    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H },
-                (SDL_Color){ 8, 9, 12, 210 });
-    render_fill(render, (SDL_Rect){ panel_x, 28, panel_w, SCREEN_H - 56 }, COL_PANEL);
-    render_outline(render, (SDL_Rect){ panel_x, 28, panel_w, SCREEN_H - 56 }, 2, COL_LINE);
+    SDL_Color scrim = g_theme->bg;
+    scrim.a = 214;
+    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, scrim);
+    render_fill(render, (SDL_Rect){ panel_x, 28, panel_w, SCREEN_H - 56 }, g_theme->panel);
+    render_outline(render, (SDL_Rect){ panel_x, 28, panel_w, SCREEN_H - 56 }, 2,
+                   g_theme->line);
 
-    render_text(render, render->font_large, x, 48, COL_TEXT, "Settings");
+    render_text(render, render->font_large, x, 48, g_theme->text, "Settings");
+    snprintf(line, sizeof(line), "%s", ui_theme_name(prefs->theme));
+    render_text_right(render, render->font, right, 56, g_theme->faint, line);
 
-    int y = 104;
-    for (size_t i = 0; i < Setting_Count; i++) {
-        /* Section headings sit above the rows they introduce. */
-        if (i == Setting_PosterTiles) {
-            render_text(render, render->font, x, y, COL_ACCENT, "Appearance");
-            y += 30;
+    /* Scroll so the selection stays inside the window. */
+    size_t start = 0;
+    if (total > VISIBLE_ROWS) {
+        if (settings->row > VISIBLE_ROWS / 2)
+            start = settings->row - VISIBLE_ROWS / 2;
+        if (start + VISIBLE_ROWS > total)
+            start = total - VISIBLE_ROWS;
+    }
+
+    int y = 108;
+    for (size_t i = start; i < total && i < start + VISIBLE_ROWS; i++) {
+        const char *label = "";
+        const char *value = "";
+        char shelf_value[32];
+
+        if (i == Setting_Theme && i == start) {
+            render_text(render, render->font, x, y, g_theme->accent, "Appearance");
+            y += 28;
         } else if (i == Setting_ShowHidden) {
-            y += 12;
-            render_text(render, render->font, x, y, COL_ACCENT, "Library");
-            y += 30;
+            render_text(render, render->font, x, y, g_theme->accent, "Library");
+            y += 28;
+        } else if (i == Setting_Fixed) {
+            render_text(render, render->font, x, y, g_theme->accent, "Shelves");
+            y += 28;
+        }
+
+        switch (i) {
+            case Setting_Theme:
+                label = "Theme";
+                value = ui_theme_name(prefs->theme);
+                break;
+            case Setting_PosterTiles:
+                label = "Cover shape";
+                value = prefs->poster_tiles ? "Poster 2:3" : "Square 1:1";
+                break;
+            case Setting_LargeTiles:
+                label = "Cover size";
+                value = prefs->large_tiles ? "Large" : "Standard";
+                break;
+            case Setting_ShowHidden:
+                label = "Show hidden items";
+                value = prefs->show_hidden ? "On" : "Off";
+                break;
+            case Setting_Rescan:
+                label = "Rescan library";
+                break;
+            case Setting_UnhideAll:
+                label = "Unhide everything";
+                break;
+            default: {
+                const Shelf *shelf = &shelves->items[i - Setting_Fixed];
+                label = shelf->name;
+                snprintf(shelf_value, sizeof(shelf_value), "%s",
+                         overrides && overrides_shelf_hidden(overrides, shelf->name)
+                             ? "Hidden" : "Shown");
+                value = shelf_value;
+                break;
+            }
         }
 
         bool active = (i == settings->row);
         if (active)
-            render_fill(render, (SDL_Rect){ x - 16, y - 6, panel_w - 48, 36 }, COL_RAISED);
+            render_fill(render, (SDL_Rect){ x - 16, y - 5, panel_w - 48, ROW_H - 2 },
+                        g_theme->raised);
 
-        render_text(render, render->font, x, y, active ? COL_TEXT : COL_DIM,
-                    items[i].label);
-        if (items[i].value[0])
+        render_text(render, render->font, x, y, active ? g_theme->text : g_theme->dim,
+                    label);
+        if (value[0])
             render_text_right(render, render->font, right, y,
-                              active ? COL_ACCENT : COL_DIM, items[i].value);
-        y += 38;
+                              active ? g_theme->accent : g_theme->dim, value);
+        y += ROW_H;
     }
 
-    y += 16;
-    render_fill(render, (SDL_Rect){ x - 16, y, panel_w - 48, 1 }, COL_LINE);
-    y += 18;
-
-    render_text(render, render->font, x, y, COL_ACCENT, "Controls");
-    y += 30;
-    for (size_t i = 0; i < sizeof(controls) / sizeof(controls[0]); i++) {
-        render_text(render, render->font, x, y, COL_TEXT, controls[i][0]);
-        render_text(render, render->font, x + 230, y, COL_FAINT, controls[i][1]);
-        y += 26;
+    if (total > VISIBLE_ROWS) {
+        snprintf(line, sizeof(line), "%zu of %zu", settings->row + 1, total);
+        render_text_right(render, render->font, right, y + 6, g_theme->faint, line);
     }
 
-    y += 14;
-    render_fill(render, (SDL_Rect){ x - 16, y, panel_w - 48, 1 }, COL_LINE);
-    y += 18;
-
-    render_text(render, render->font, x, y, COL_ACCENT, "About");
-    y += 30;
+    /* Footer block: counts, paths, and anything actively wrong. */
+    int info_y = SCREEN_H - 168;
+    render_fill(render, (SDL_Rect){ x - 16, info_y - 18, panel_w - 48, 1 },
+                g_theme->line);
 
     snprintf(line, sizeof(line), "%zu items across %zu shelves",
              list->count, shelves->count);
-    render_text(render, render->font, x, y, COL_FAINT, line);
-    y += 26;
-    render_text(render, render->font, x, y, COL_FAINT,
+    render_text(render, render->font, x, info_y, g_theme->faint, line);
+    render_text(render, render->font, x, info_y + 26, g_theme->faint,
                 "Config: sdmc:/switch/vitrine/");
-    y += 26;
 
     if (core_note && core_note[0])
-        render_text(render, render->font, x, y, COL_WARN, core_note);
+        render_text(render, render->font, x, info_y + 52, g_theme->warn, core_note);
 
-    render_text_right(render, render->font, right, SCREEN_H - 62, COL_FAINT,
+    render_text_right(render, render->font, right, SCREEN_H - 62, g_theme->faint,
                       "A  change        -  close");
 
     SDL_RenderPresent(render->renderer);
@@ -340,6 +416,8 @@ void ui_draw_settings(Render *render, const Settings *settings, const Prefs *pre
 
 void ui_draw_mode_gate(Render *render)
 {
+    g_theme = &THEMES[0];
+
     static const char *lines[] = {
         "VITRINE needs Application Mode.",
         "",
@@ -354,13 +432,13 @@ void ui_draw_mode_gate(Render *render)
         "Press + to exit.",
     };
 
-    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, COL_BG);
-    render_text(render, render->font_large, MARGIN_X, 120, COL_ACCENT,
+    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, g_theme->bg);
+    render_text(render, render->font_large, MARGIN_X, 120, g_theme->accent,
                 "Wrong launch mode");
 
     for (size_t i = 0; i < sizeof(lines) / sizeof(lines[0]); i++)
         render_text(render, render->font, MARGIN_X, 190 + (int)i * 32,
-                    i == 0 ? COL_TEXT : COL_DIM, lines[i]);
+                    i == 0 ? g_theme->text : g_theme->dim, lines[i]);
 
     SDL_RenderPresent(render->renderer);
 }
@@ -370,9 +448,11 @@ void ui_draw(Render *render, IconCache *icons, const EntryList *list,
              const OverrideList *overrides, const char *status)
 {
     const Prefs *prefs = &overrides->prefs;
+    theme_apply(prefs);
+
     int pitch = shelf_h(prefs);
 
-    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, COL_BG);
+    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, SCREEN_H }, g_theme->bg);
 
     state->pulse = approach(state->pulse * 1000.0f, 1000.0f, 0.25f) / 1000.0f;
 
@@ -393,11 +473,11 @@ void ui_draw(Render *render, IconCache *icons, const EntryList *list,
     }
 
     /* Drawn last so shelves scroll under the chrome rather than through it. */
-    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, HEADER_H }, COL_BG);
+    render_fill(render, (SDL_Rect){ 0, 0, SCREEN_W, HEADER_H }, g_theme->bg);
     draw_header(render, list, shelves);
 
     if (prefs->show_hidden)
-        render_text_right(render, render->font, SCREEN_W - MARGIN_X, 30, COL_WARN,
+        render_text_right(render, render->font, SCREEN_W - MARGIN_X, 30, g_theme->warn,
                           "showing hidden");
 
     draw_footer(render, list, shelves, shelf_index, status);

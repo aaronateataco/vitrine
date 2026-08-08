@@ -121,6 +121,33 @@ void overrides_toggle_promote(OverrideList *overrides, const Entry *entry)
     overrides->dirty = true;
 }
 
+static void shelf_key(const char *shelf_name, char *out, size_t out_size)
+{
+    snprintf(out, out_size, "shelf:%s", shelf_name);
+}
+
+bool overrides_shelf_hidden(const OverrideList *overrides, const char *shelf_name)
+{
+    char key[ENTRY_PATH_LEN];
+    shelf_key(shelf_name, key, sizeof(key));
+
+    const Override *found = overrides_find(overrides, key);
+    return found && found->hidden;
+}
+
+void overrides_toggle_shelf(OverrideList *overrides, const char *shelf_name)
+{
+    char key[ENTRY_PATH_LEN];
+    shelf_key(shelf_name, key, sizeof(key));
+
+    Override *slot = ensure(overrides, key);
+    if (!slot)
+        return;
+
+    slot->hidden = !slot->hidden;
+    overrides->dirty = true;
+}
+
 void overrides_unhide_all(OverrideList *overrides)
 {
     for (size_t i = 0; i < overrides->count; i++)
@@ -171,6 +198,10 @@ Result overrides_load(OverrideList *overrides, const char *path)
             cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(prefs, "poster_tiles"));
         overrides->prefs.large_tiles =
             cJSON_IsTrue(cJSON_GetObjectItemCaseSensitive(prefs, "large_tiles"));
+
+        cJSON *theme = cJSON_GetObjectItemCaseSensitive(prefs, "theme");
+        if (cJSON_IsNumber(theme) && theme->valueint >= 0)
+            overrides->prefs.theme = theme->valueint;
     }
 
     cJSON *entries = cJSON_GetObjectItemCaseSensitive(root, "entries");
@@ -208,6 +239,7 @@ Result overrides_save(OverrideList *overrides, const char *path)
         cJSON_AddBoolToObject(prefs, "show_hidden", overrides->prefs.show_hidden);
         cJSON_AddBoolToObject(prefs, "poster_tiles", overrides->prefs.poster_tiles);
         cJSON_AddBoolToObject(prefs, "large_tiles", overrides->prefs.large_tiles);
+        cJSON_AddNumberToObject(prefs, "theme", overrides->prefs.theme);
     }
 
     cJSON *entries = cJSON_AddObjectToObject(root, "entries");

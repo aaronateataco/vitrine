@@ -137,6 +137,27 @@ int main(void)
           shelves.items[0].count == 3 && shelves.items[1].count == 2);
     check("shelf count unchanged by promotion", shelves.count == baseline);
 
+    /* Whole shelves can be hidden, and reappear under show-hidden. */
+    overrides_toggle_promote(&ov, a_homebrew);   /* undo the promotion above */
+    overrides_toggle_shelf(&ov, "Homebrew");
+    shelves_build(&shelves, &list, &systems, &ov, false);
+    check("hidden shelf dropped entirely", shelves.count == baseline - 1);
+
+    bool saw_homebrew = false;
+    for (size_t i = 0; i < shelves.count; i++)
+        if (strcmp(shelves.items[i].name, "Homebrew") == 0) saw_homebrew = true;
+    check("hidden shelf really gone", !saw_homebrew);
+
+    shelves_build(&shelves, &list, &systems, &ov, true);
+    check("show-hidden restores the shelf", shelves.count == baseline);
+    for (size_t i = 0; i < shelves.count; i++)
+        if (strcmp(shelves.items[i].name, "Homebrew") == 0)
+            check("restored shelf flagged hidden", shelves.items[i].hidden);
+
+    overrides_toggle_shelf(&ov, "Homebrew");
+    shelves_build(&shelves, &list, &systems, &ov, false);
+    check("un-hiding a shelf brings it back", shelves.count == baseline);
+
     overrides_free(&ov);
     shelves_free(&shelves);
     entry_list_free(&list);

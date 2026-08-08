@@ -20,6 +20,7 @@ typedef struct {
     bool show_hidden;    ///< Reveal hidden entries so they can be restored.
     bool poster_tiles;   ///< 2:3 box art instead of 1:1 Switch-style icons.
     bool large_tiles;    ///< Fewer, bigger tiles per shelf.
+    int  theme;          ///< Index into the UI theme table.
 } Prefs;
 
 typedef struct {
@@ -50,3 +51,10 @@ void   overrides_toggle_promote(OverrideList *overrides, const Entry *entry);
 
 /// Clears every hidden flag; the promote flags are left alone.
 void   overrides_unhide_all(OverrideList *overrides);
+
+/*
+ * Whole shelves can be hidden too (e.g. Homebrew). They share the override
+ * table under a "shelf:" key prefix, so one save path covers everything.
+ */
+bool   overrides_shelf_hidden(const OverrideList *overrides, const char *shelf_name);
+void   overrides_toggle_shelf(OverrideList *overrides, const char *shelf_name);

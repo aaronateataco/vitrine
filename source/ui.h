@@ -17,16 +17,18 @@ void ui_state_init(UiState *state);
 void ui_state_bump(UiState *state);
 
 /*
- * Settings overlay. Every row is selectable; section headings are drawn between
- * them by index, which keeps navigation a simple increment.
+ * Settings rows. The fixed rows come first; every shelf then contributes one
+ * visibility toggle, so the count is dynamic. Section headings are drawn
+ * between rows by index, which keeps navigation a simple increment.
  */
 typedef enum {
-    Setting_PosterTiles = 0,
-    Setting_LargeTiles  = 1,
-    Setting_ShowHidden  = 2,
-    Setting_Rescan      = 3,
-    Setting_UnhideAll   = 4,
-    Setting_Count       = 5,
+    Setting_Theme       = 0,
+    Setting_PosterTiles = 1,
+    Setting_LargeTiles  = 2,
+    Setting_ShowHidden  = 3,
+    Setting_Rescan      = 4,
+    Setting_UnhideAll   = 5,
+    Setting_Fixed       = 6,
 } SettingRow;
 
 typedef struct {
@@ -34,9 +36,14 @@ typedef struct {
     size_t row;
 } Settings;
 
+/// Fixed rows plus one per shelf.
+size_t      ui_settings_count(const ShelfList *shelves);
+int         ui_theme_count(void);
+const char *ui_theme_name(int index);
+
 void ui_draw_settings(Render *render, const Settings *settings, const Prefs *prefs,
                       const EntryList *list, const ShelfList *shelves,
-                      const char *core_note);
+                      const OverrideList *overrides, const char *core_note);
 
 void ui_draw(Render *render, IconCache *icons, const EntryList *list,
              ShelfList *shelves, size_t shelf_index, UiState *state,
