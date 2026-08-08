@@ -188,11 +188,17 @@ int main(int argc, char **argv)
 
                 if (settings.row >= Setting_Fixed) {
                     size_t index = settings.row - Setting_Fixed;
+                    const char *shelf_name = NULL;
 
-                    if (index < lib.shelves.count) {
-                        /* Copy the name first: regrouping invalidates the shelf. */
+                    if (index < lib.shelves.count)
+                        shelf_name = lib.shelves.items[index].name;
+                    else if (index - lib.shelves.count < lib.shelves.hidden_count)
+                        shelf_name = lib.shelves.hidden_names[index - lib.shelves.count];
+
+                    if (shelf_name) {
+                        /* Copy first: regrouping invalidates both arrays. */
                         char name[SHELF_NAME_LEN];
-                        snprintf(name, sizeof(name), "%s", lib.shelves.items[index].name);
+                        snprintf(name, sizeof(name), "%s", shelf_name);
                         overrides_toggle_shelf(&lib.overrides, name);
                         library_regroup(&lib);
                     }

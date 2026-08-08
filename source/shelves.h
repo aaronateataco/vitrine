@@ -20,10 +20,20 @@ typedef struct {
     float   scroll_x;     ///< Animated, in pixels.
 } Shelf;
 
+enum { SHELF_MAX_HIDDEN = 32 };
+
 typedef struct {
     Shelf *items;
     size_t count;
     size_t capacity;
+
+    /*
+     * Names of shelves dropped for being hidden. Kept so Settings can still
+     * list and restore them - otherwise hiding one is irreversible except by
+     * unhiding everything.
+     */
+    char   hidden_names[SHELF_MAX_HIDDEN][SHELF_NAME_LEN];
+    size_t hidden_count;
 } ShelfList;
 
 bool shelves_init(ShelfList *shelves);

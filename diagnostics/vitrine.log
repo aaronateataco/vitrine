@@ -1,0 +1,15 @@
+[443672.485] VITRINE diagnostics log
+[443672.493] built Aug  8 2026 02:24:41
+[443672.498] applet mode: Application
+[443672.639] render ready
+[443673.338] scan: 102 entries across 3 shelves
+[443673.343] system Nintendo Entertainment System core=sdmc:/tico/cores/tico-fceumm.nro
+[443673.347] system Super Nintendo               core=sdmc:/tico/cores/tico-snes9x.nro
+[443673.351] system Game Boy Advance             core=sdmc:/tico/cores/tico-mgba.nro
+[443673.354] system Nintendo 64                  core=sdmc:/tico/cores/tico-mupen64plus.nro
+[443673.358] system PlayStation                  core=sdmc:/tico/cores/tico-duckstation.nro
+[443681.273] screenshot saved: sdmc:/switch/vitrine/screenshots/vitrine-000.png (1280x720)
+[443681.309] diagnostics report written: sdmc:/switch/vitrine/diagnostics.txt
+[443698.369] screenshot saved: sdmc:/switch/vitrine/screenshots/vitrine-001.png (1280x720)
+[443702.064] screenshot saved: sdmc:/switch/vitrine/screenshots/vitrine-002.png (1280x720)
+[443702.102] diagnostics report written: sdmc:/switch/vitrine/diagnostics.txt

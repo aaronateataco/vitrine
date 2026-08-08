@@ -148,6 +148,11 @@ int main(void)
         if (strcmp(shelves.items[i].name, "Homebrew") == 0) saw_homebrew = true;
     check("hidden shelf really gone", !saw_homebrew);
 
+    /* It must still be nameable, or Settings cannot offer to restore it. */
+    check("hidden shelf name retained for settings", shelves.hidden_count == 1);
+    check("retained name is correct",
+          strcmp(shelves.hidden_names[0], "Homebrew") == 0);
+
     shelves_build(&shelves, &list, &systems, &ov, true);
     check("show-hidden restores the shelf", shelves.count == baseline);
     for (size_t i = 0; i < shelves.count; i++)
@@ -157,6 +162,7 @@ int main(void)
     overrides_toggle_shelf(&ov, "Homebrew");
     shelves_build(&shelves, &list, &systems, &ov, false);
     check("un-hiding a shelf brings it back", shelves.count == baseline);
+    check("nothing left in the hidden list", shelves.hidden_count == 0);
 
     overrides_free(&ov);
     shelves_free(&shelves);

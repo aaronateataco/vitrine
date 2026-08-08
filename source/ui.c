@@ -6,10 +6,10 @@
 
 #define MARGIN_X     64
 #define HEADER_H     76
-#define FOOTER_H    108
+#define FOOTER_H    124
 #define TILE_GAP     18
-#define SHELF_LABEL  30
-#define SHELF_PAD    26
+#define SHELF_LABEL  40
+#define SHELF_PAD    22
 #define VIEW_TOP     HEADER_H
 #define VIEW_BOTTOM (SCREEN_H - FOOTER_H)
 #define SELECT_SCALE 1.10f
@@ -64,7 +64,7 @@ static void theme_apply(const Prefs *prefs)
 
 size_t ui_settings_count(const ShelfList *shelves)
 {
-    return Setting_Fixed + shelves->count;
+    return Setting_Fixed + shelves->count + shelves->hidden_count;
 }
 
 /*
@@ -154,10 +154,12 @@ static void draw_tile(Render *render, IconCache *icons, const Entry *entry,
     if (texture) {
         SDL_RenderCopy(render->renderer, texture, NULL, &rect);
     } else {
-        const char *label = entry->author[0] ? entry->author : entry->name;
-        render_fill(render, rect, plate_color(label));
+        /* Tint by platform, but label with the title - the platform is already
+           the shelf heading, and repeating it makes every tile look the same. */
+        const char *tint = entry->author[0] ? entry->author : entry->name;
+        render_fill(render, rect, plate_color(tint));
         render_text_fit(render, render->font, rect.x, rect.y + h / 2 - 14, w,
-                        g_theme->text, label);
+                        g_theme->text, entry->name);
     }
 
     if (hidden) {
@@ -285,7 +287,7 @@ static void draw_footer(Render *render, const EntryList *list,
                       "A  play        -  settings");
 
     if (status && status[0])
-        render_text(render, render->font, MARGIN_X, y + 70, g_theme->warn, status);
+        render_text(render, render->font, MARGIN_X, y + 74, g_theme->warn, status);
 }
 
 void ui_draw_settings(Render *render, const Settings *settings, const Prefs *prefs,
@@ -369,10 +371,15 @@ void ui_draw_settings(Render *render, const Settings *settings, const Prefs *pre
                 label = "Save screenshot + report";
                 break;
             default: {
-                const Shelf *shelf = &shelves->items[i - Setting_Fixed];
-                label = shelf->name;
+                size_t index = i - Setting_Fixed;
+
+                /* Visible shelves first, then the ones hidden out of the list. */
+                label = index < shelves->count
+                            ? shelves->items[index].name
+                            : shelves->hidden_names[index - shelves->count];
+
                 snprintf(shelf_value, sizeof(shelf_value), "%s",
-                         overrides && overrides_shelf_hidden(overrides, shelf->name)
+                         overrides && overrides_shelf_hidden(overrides, label)
                              ? "Hidden" : "Shown");
                 value = shelf_value;
                 break;

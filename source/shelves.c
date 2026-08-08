@@ -141,9 +141,14 @@ void shelves_build(ShelfList *shelves, const EntryList *list, const SystemList *
         shelves->items[i].hidden =
             overrides && overrides_shelf_hidden(overrides, shelves->items[i].name);
 
+    shelves->hidden_count = 0;
+
     size_t out = 0;
     for (size_t i = 0; i < shelves->count; i++) {
         if (shelves->items[i].hidden && !show_hidden) {
+            if (shelves->hidden_count < SHELF_MAX_HIDDEN)
+                snprintf(shelves->hidden_names[shelves->hidden_count++],
+                         SHELF_NAME_LEN, "%s", shelves->items[i].name);
             shelf_free(&shelves->items[i]);
             continue;
         }

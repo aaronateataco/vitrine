@@ -119,19 +119,18 @@ cores, but needs neither.
 
 ### Exiting a game returns me to tico
 
-hbloader's default return target is **`sdmc:/hbmenu.nro`**. When a core exits without
-naming a successor, that is where the console goes. If a tico install has replaced
-`hbmenu.nro` with itself, *every* homebrew exit lands in tico no matter which cores you
-use — nothing VITRINE does can change hbloader's default.
+**The cores are the cause.** tico's core NROs chain-load back to `tico.nro` when they
+exit, so borrowing them from `/tico/cores/` inherits that. Nothing VITRINE does can
+override where another program decides to go next.
 
-Check first: look at `sdmc:/hbmenu.nro` and see whether it is tico. Then either
+This was confirmed by diagnostics: `sdmc:/hbmenu.nro` is not tico, so hbloader's default
+return target is not to blame — the cores are choosing tico explicitly.
 
-- **make VITRINE the shell** — back up `hbmenu.nro`, copy `vitrine.nro` over it, and every
-  exit returns here (VITRINE already lists homebrew, so it can fill that role), or
-- **restore the real hbmenu** from the [nx-hbmenu releases](https://github.com/switchbrew/nx-hbmenu/releases).
-
-If `hbmenu.nro` is *not* tico, then the cores are chain-loading back to it themselves, and
-the fix is different cores — see below.
+The fix is to use cores that return to whoever launched them. `tools/get-cores.sh`
+downloads those from libretro's official buildbot; drop them in
+`sdmc:/switch/vitrine/cores/` and put that path first in each system's `core =` list.
+Run **Settings → Save screenshot + report** and check `diagnostics.txt` to see which
+core candidate is actually being used.
 
 **Prebuilt cores, the easy route.** libretro's official buildbot publishes Switch core
 NROs, which return to whatever launched them:
