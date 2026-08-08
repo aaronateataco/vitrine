@@ -29,6 +29,16 @@ typedef struct Scene Scene;
 Scene *scene_create(void);
 void   scene_destroy(Scene *scene);
 
+/*
+ * Loads a glTF/GLB from the SD card, flattening every primitive into one
+ * buffer. The model is normalised to a unit-ish size and centred, so camera
+ * distances in franchises.json mean the same thing across wildly different
+ * source models. Returns false and leaves the placeholder in use on failure.
+ */
+bool scene_load_model(Scene *scene, const char *path);
+void scene_clear_model(Scene *scene);
+bool scene_has_model(const Scene *scene);
+
 void scene_camera_reset(SceneCamera *camera);
 
 /*

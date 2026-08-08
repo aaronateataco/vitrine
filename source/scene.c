@@ -7,11 +7,21 @@
 #include "diag.h"
 #include "scene.h"
 
+#define CGLTF_IMPLEMENTATION
+#include "vendor/cgltf.h"
+
+/* Guards against a pathological model exhausting the heap mid-session. */
+#define SCENE_MAX_VERTICES (600 * 1000)
+
 #define PI_F 3.14159265358979f
 
 struct Scene {
     GLuint program;
     GLuint vbo;
+    GLuint model_vbo;
+    GLsizei model_vertices;
+    float  model_scale;
+    float  model_centre[3];
     GLint  a_pos;
     GLint  a_normal;
     GLint  u_mvp;
@@ -206,10 +216,174 @@ Scene *scene_create(void)
     return scene;
 }
 
+bool scene_has_model(const Scene *scene)
+{
+    return scene && scene->model_vertices > 0;
+}
+
+void scene_clear_model(Scene *scene)
+{
+    if (!scene || !scene->model_vbo)
+        return;
+
+    glDeleteBuffers(1, &scene->model_vbo);
+    scene->model_vbo = 0;
+    scene->model_vertices = 0;
+}
+
+/* Appends one primitive's triangles as interleaved position + normal. */
+static bool append_primitive(const cgltf_primitive *primitive, float **out,
+                             size_t *count, size_t *capacity)
+{
+    if (primitive->type != cgltf_primitive_type_triangles)
+        return true;   /* Skip lines and points rather than failing the load. */
+
+    const cgltf_accessor *positions = NULL;
+    const cgltf_accessor *normals = NULL;
+
+    for (cgltf_size i = 0; i < primitive->attributes_count; i++) {
+        if (primitive->attributes[i].type == cgltf_attribute_type_position)
+            positions = primitive->attributes[i].data;
+        else if (primitive->attributes[i].type == cgltf_attribute_type_normal)
+            normals = primitive->attributes[i].data;
+    }
+
+    if (!positions)
+        return true;
+
+    cgltf_size vertex_count = positions->count;
+    float *position_data = calloc(vertex_count * 3, sizeof(float));
+    float *normal_data = calloc(vertex_count * 3, sizeof(float));
+    if (!position_data || !normal_data) {
+        free(position_data);
+        free(normal_data);
+        return false;
+    }
+
+    cgltf_accessor_unpack_floats(positions, position_data, vertex_count * 3);
+    if (normals && normals->count == vertex_count)
+        cgltf_accessor_unpack_floats(normals, normal_data, vertex_count * 3);
+    else
+        for (cgltf_size i = 0; i < vertex_count; i++)
+            normal_data[i * 3 + 1] = 1.0f;   /* Flat-ish fallback. */
+
+    cgltf_size index_count = primitive->indices ? primitive->indices->count
+                                                : vertex_count;
+
+    for (cgltf_size i = 0; i < index_count; i++) {
+        cgltf_size index = primitive->indices
+                               ? cgltf_accessor_read_index(primitive->indices, i)
+                               : i;
+        if (index >= vertex_count)
+            continue;
+
+        if (*count + 1 > SCENE_MAX_VERTICES)
+            break;
+
+        if (*count == *capacity) {
+            size_t grown = *capacity ? *capacity * 2 : 4096;
+            float *bigger = realloc(*out, grown * 6 * sizeof(float));
+            if (!bigger) {
+                free(position_data);
+                free(normal_data);
+                return false;
+            }
+            *out = bigger;
+            *capacity = grown;
+        }
+
+        float *vertex = *out + (*count) * 6;
+        memcpy(vertex, position_data + index * 3, 3 * sizeof(float));
+        memcpy(vertex + 3, normal_data + index * 3, 3 * sizeof(float));
+        (*count)++;
+    }
+
+    free(position_data);
+    free(normal_data);
+    return true;
+}
+
+bool scene_load_model(Scene *scene, const char *path)
+{
+    if (!scene || !path || !path[0])
+        return false;
+
+    cgltf_options options;
+    memset(&options, 0, sizeof(options));
+
+    cgltf_data *data = NULL;
+    if (cgltf_parse_file(&options, path, &data) != cgltf_result_success) {
+        diag_logf("model parse failed: %s", path);
+        return false;
+    }
+
+    if (cgltf_load_buffers(&options, data, path) != cgltf_result_success) {
+        diag_logf("model buffers failed: %s", path);
+        cgltf_free(data);
+        return false;
+    }
+
+    float *vertices = NULL;
+    size_t count = 0;
+    size_t capacity = 0;
+    bool ok = true;
+
+    for (cgltf_size m = 0; ok && m < data->meshes_count; m++)
+        for (cgltf_size p = 0; ok && p < data->meshes[m].primitives_count; p++)
+            ok = append_primitive(&data->meshes[m].primitives[p], &vertices,
+                                  &count, &capacity);
+
+    cgltf_free(data);
+
+    if (!ok || count < 3) {
+        free(vertices);
+        diag_logf("model yielded no geometry: %s", path);
+        return false;
+    }
+
+    /* Normalise so a distance in franchises.json means the same thing for any
+       model, whatever units it was authored in. */
+    float min[3] = { vertices[0], vertices[1], vertices[2] };
+    float max[3] = { vertices[0], vertices[1], vertices[2] };
+
+    for (size_t i = 1; i < count; i++)
+        for (int axis = 0; axis < 3; axis++) {
+            float value = vertices[i * 6 + axis];
+            if (value < min[axis]) min[axis] = value;
+            if (value > max[axis]) max[axis] = value;
+        }
+
+    float extent = 0.0f;
+    for (int axis = 0; axis < 3; axis++) {
+        scene->model_centre[axis] = (min[axis] + max[axis]) * 0.5f;
+        float span = max[axis] - min[axis];
+        if (span > extent)
+            extent = span;
+    }
+
+    scene->model_scale = extent > 1e-5f ? 2.0f / extent : 1.0f;
+
+    scene_clear_model(scene);
+    glGenBuffers(1, &scene->model_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, scene->model_vbo);
+    glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)(count * 6 * sizeof(float)),
+                 vertices, GL_STATIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    scene->model_vertices = (GLsizei)count;
+    free(vertices);
+
+    diag_logf("model loaded: %s (%zu vertices, scale %.3f)", path, count,
+              (double)scene->model_scale);
+    return true;
+}
+
 void scene_destroy(Scene *scene)
 {
     if (!scene)
         return;
+
+    scene_clear_model(scene);
 
     if (scene->vbo)
         glDeleteBuffers(1, &scene->vbo);
@@ -285,6 +459,17 @@ void scene_draw(Scene *scene, Render *render, const SceneCamera *camera,
     mat_look_at(view, eye, camera->target);
     mat_rotate_y(model, seconds * 0.6f);
 
+    if (scene_has_model(scene)) {
+        /* Centre and normalise before the spin, so it turns about its middle. */
+        float fit[16];
+        mat_identity(fit);
+        fit[0] = fit[5] = fit[10] = scene->model_scale;
+        fit[12] = -scene->model_centre[0] * scene->model_scale;
+        fit[13] = -scene->model_centre[1] * scene->model_scale;
+        fit[14] = -scene->model_centre[2] * scene->model_scale;
+        mat_multiply(model, model, fit);
+    }
+
     mat_multiply(mvp, projection, view);
     mat_multiply(mvp, mvp, model);
 
@@ -293,7 +478,8 @@ void scene_draw(Scene *scene, Render *render, const SceneCamera *camera,
     glUniformMatrix4fv(scene->u_model, 1, GL_FALSE, model);
     glUniform3f(scene->u_color, 0.35f, 0.66f, 1.0f);
 
-    glBindBuffer(GL_ARRAY_BUFFER, scene->vbo);
+    bool use_model = scene_has_model(scene);
+    glBindBuffer(GL_ARRAY_BUFFER, use_model ? scene->model_vbo : scene->vbo);
     glEnableVertexAttribArray((GLuint)scene->a_pos);
     glVertexAttribPointer((GLuint)scene->a_pos, 3, GL_FLOAT, GL_FALSE,
                           6 * sizeof(GLfloat), (void *)0);
@@ -301,7 +487,9 @@ void scene_draw(Scene *scene, Render *render, const SceneCamera *camera,
     glVertexAttribPointer((GLuint)scene->a_normal, 3, GL_FLOAT, GL_FALSE,
                           6 * sizeof(GLfloat), (void *)(3 * sizeof(GLfloat)));
 
-    glDrawArrays(GL_TRIANGLES, 0, sizeof(CUBE) / (6 * sizeof(GLfloat)));
+    glDrawArrays(GL_TRIANGLES, 0,
+                 use_model ? scene->model_vertices
+                           : (GLsizei)(sizeof(CUBE) / (6 * sizeof(GLfloat))));
 
     /* Hand the context back in the shape SDL expects to find it. */
     glDisableVertexAttribArray((GLuint)scene->a_pos);
